@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>汇盈国际 - 双摄打卡测试版（无定位）</title>
+<title>汇盈国际 - 拍照打卡（纯后置测试版）</title>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   body { margin:0; font-family: Arial; background:#000; color:#fff; }
@@ -11,14 +11,14 @@
   #overlay {
     position: absolute; bottom: 20px; left: 20px;
     background: rgba(0,0,0,0.6); padding: 12px 18px; border-radius: 10px;
-    font-size: 18px; line-height: 1.5; pointer-events: none;
+    font-size: 18px; line-height: 1.5; pointer-events: none; max-width: 90%;
   }
   #controls { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); }
   button {
     background:#fff; border:none; width:80px; height:80px; border-radius:50%;
     font-size:48px; cursor:pointer; box-shadow:0 6px 30px rgba(0,0,0,0.6);
   }
-  #status { position:absolute; top:20px; left:0; right:0; text-align:center; color:#0f0; font-size:16px; }
+  #status { position:absolute; top:20px; left:0; right:0; text-align:center; color:#0f0; font-size:16px; padding:0 20px; }
 </style>
 </head>
 <body>
@@ -29,25 +29,24 @@
   
   <div id="overlay">
     <div id="time">获取时间中...</div>
-    <div>无定位测试版</div>
+    <div>纯后置测试版（无定位）</div>
   </div>
 
   <div id="controls">
-    <button id="capture">📸 开始打卡</button>
+    <button id="capture">📸 拍照打卡</button>
   </div>
 
-  <div id="status">点击按钮开始拍摄前后两张照片</div>
+  <div id="status">摄像头启动中...</div>
 </div>
 
 <script>
 // ==================== 配置 ====================
-const BACKEND_URL = "https://huiying888.onrender.com/upload";
+const BACKEND_URL = "https://huiying888.onrender.com/upload";  // 你的后端
 const urlParams = new URLSearchParams(location.search);
 const TARGET_CHAT_ID = urlParams.get('chatid');  // 自动带群ID
 // ===============================================
 
 let currentStream = null;
-let step = 0;  // 0=未开始, 1=后置已拍, 2=完成
 
 // 实时时间
 function updateTime() {
@@ -56,19 +55,26 @@ function updateTime() {
 setInterval(updateTime, 1000);
 updateTime();
 
-// 切换摄像头
-async function startCamera(facingMode) {
+// 启动后置摄像头（Telegram 兼容写法）
+async function startCamera() {
   if (currentStream) currentStream.getTracks().forEach(t => t.stop());
-  const stream = await navigator.mediaDevices.getUserMedia({
-    video: { facingMode: facingMode, width: {ideal: 4096}, height: {ideal: 4096} },
-    audio: false
-  });
-  document.getElementById('video').srcObject = stream;
-  currentStream = stream;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: {ideal: 4096}, height: {ideal: 4096} },
+      audio: false
+    });
+    document.getElementById('video').srcObject = stream;
+    currentStream = stream;
+  } catch (err) {
+    // 如果后置失败，用默认摄像头
+    const stream = await navigator.mediaDevices.getUserMedia({video: true});
+    document.getElementById('video').srcObject = stream;
+    currentStream = stream;
+  }
 }
 
-// 拍照 + 烧水印
-function takePhoto(view) {
+// 拍照 + 烧时间水印
+function takePhoto() {
   return new Promise(resolve => {
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
@@ -78,65 +84,58 @@ function takePhoto(view) {
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
     const now = new Date().toLocaleString('zh-CN', {hour12:false});
-    const text = `${now}\n${view}`;
     ctx.font = 'bold 48px Arial';
     ctx.fillStyle = 'rgba(255,255,255,0.95)';
     ctx.strokeStyle = 'black';
     ctx.lineWidth = 8;
-    const lines = text.split('\n');
-    let y = canvas.height - 60;
-    lines.forEach(line => {
-      ctx.strokeText(line, 40, y);
-      ctx.fillText(line, 40, y);
-      y -= 70;
-    });
+    ctx.strokeText(now, 40, canvas.height - 80);
+    ctx.fillText(now, 40, canvas.height - 80);
 
     canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.95);
   });
 }
 
-// 上传单张照片
-async function uploadPhoto(blob, view) {
+// 上传
+async function uploadPhoto(blob) {
   const form = new FormData();
-  form.append('photo', blob, `${view}.jpg`);
+  form.append('photo', blob, 'photo.jpg');
 
   const url = new URL(BACKEND_URL);
-  url.searchParams.set('lat', '0');      // 无定位，用0占位
+  url.searchParams.set('lat', '0');  // 无定位占位
   url.searchParams.set('lng', '0');
-  url.searchParams.set('name', '测试用户');
+  url.searchParams.set('name', '汇盈用户');
   url.searchParams.set('time', Date.now());
   if (TARGET_CHAT_ID) url.searchParams.set('chatid', TARGET_CHAT_ID);
 
-  await fetch(url, { method: 'POST', body: form });
+  document.getElementById('status').textContent = "⏳ 正在上传...";
+
+  fetch(url, { method: 'POST', body: form })
+    .then(r => r.json())
+    .then(res => {
+      if (res.code === 0) {
+        document.getElementById('status').innerHTML = "✅ 上传成功！<br>照片已发送到当前群和备份群";
+      } else {
+        document.getElementById('status').textContent = "❌ 上传失败：" + JSON.stringify(res);
+      }
+    })
+    .catch(() => {
+      document.getElementById('status').textContent = "❌ 网络错误";
+    });
 }
 
-// 主流程
+// 拍照按钮
 document.getElementById('capture').addEventListener('click', async () => {
-  if (step === 0) {
-    // 第一步：后置
-    document.getElementById('status').textContent = "📸 拍摄后置镜头...";
-    await startCamera("environment");
-    const backBlob = await takePhoto("后置视角");
-    await uploadPhoto(backBlob, "back");
-    step = 1;
-    document.getElementById('status').textContent = "✅ 后置已上传，自动切换前置...";
-    setTimeout(() => document.getElementById('capture').click(), 1000); // 自动拍前置
-  } else if (step === 1) {
-    // 第二步：前置
-    document.getElementById('status').textContent = "🤳 拍摄前置自拍...";
-    await startCamera("user");
-    const frontBlob = await takePhoto("前置自拍");
-    await uploadPhoto(frontBlob, "front");
-    document.getElementById('status').innerHTML = "🎉 打卡完成！<br>前后两张照片已推送到群";
-    step = 0;
-  }
+  document.getElementById('status').textContent = "📸 正在拍照...";
+  await startCamera();  // 确保是后置
+  const blob = await takePhoto();
+  await uploadPhoto(blob);
 });
 
-// 启动一个默认摄像头
+// 页面加载先启动摄像头
 navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
   document.getElementById('video').srcObject = stream;
   currentStream = stream;
-  document.getElementById('status').textContent = "点击按钮开始拍摄（先拍后置再自动拍前置）";
+  document.getElementById('status').textContent = "点击按钮拍照打卡（后置摄像头）";
 }).catch(() => {
   document.getElementById('status').textContent = "请允许摄像头权限";
 });
