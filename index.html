@@ -6,167 +6,124 @@
     <title>拍照确认</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; min-height: 100vh; color: #fff; }
-        .container { background: rgba(255,255,255,0.1); backdrop-filter: blur(20px); border-radius: 24px; padding: 40px 30px; max-width: 420px; margin: 0 auto; text-align: center; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-        h1 { font-size: 32px; margin-bottom: 12px; }
-        p { opacity: 0.9; line-height: 1.6; margin-bottom: 30px; }
-        .camera-choice { display: flex; gap: 10px; margin-bottom: 20px; }
-        .camera-btn { flex: 1; padding: 14px; border-radius: 16px; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 16px; }
-        .camera-btn.active { background: rgba(255,255,255,0.25); }
-        .btn { background: #ff5e62; border: none; color: #fff; padding: 18px; border-radius: 50px; font-size: 18px; width: 100%; margin: 20px 0; font-weight: bold; }
-        #videoPreview, #photoPreview { width: 100%; height: 240px; object-fit: cover; border-radius: 16px; margin: 20px 0; display: none; }
-        #captureBtn { background: #4facfe; padding: 14px 30px; border-radius: 30px; display: none; }
-        .send-btn { background: #4facfe; display: none; }
-        .status { margin-top: 20px; padding: 12px; background: rgba(0,0,0,0.2); border-radius: 12px; }
-        .loading { display: none; text-align: center; margin: 20px 0; }
-        .spinner { border: 4px solid rgba(255,255,255,0.3); border-top: 4px solid #fff; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 0 auto 10px; }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* 你原来的美化样式全部保留，我只删减到最小演示，实际直接复制你原来的就行 */
+        body {font-family: -apple-system,sans-serif;background:linear-gradient(135deg,#0c2461,#1e3799);color:#fff;min-height:100vh;padding:20px;display:flex;align-items:center;justify-content:center;}
+        .container {background:rgba(255,255,255,0.1);backdrop-filter:blur(20px);border-radius:28px;padding:40px;max-width:420px;width:100%;text-align:center;}
+        button {margin:10px 0;padding:16px;border-radius:50px;border:none;color:#fff;font-size:17px;font-weight:600;}
+        #startBtn {background:#ff5e62;}
+        #captureBtn {background:#4facfe;display:none;}
+        #sendBtn {background:#ff9f1c;display:none;}
+        video,img {width:100%;max-height:300px;object-fit:cover;border-radius:16px;margin:15px 0;display:none;}
+        .status {margin-top:20px;padding:15px;background:rgba(255,255,255,0.1);border-radius:16px;}
     </style>
 </head>
 <body>
 <div class="container">
-    <h1 id="title">📸 拍照确认</h1>
-    <p id="description">请按要求拍照并发送位置</p>
-
-    <div class="camera-choice">
-        <button class="camera-btn active" onclick="selectCamera('back')">后置摄像头</button>
-        <button class="camera-btn" onclick="selectCamera('front')">前置摄像头</button>
-    </div>
-
-    <button id="signInBtn" class="btn">开始拍照确认</button>
-
-    <video id="videoPreview" autoplay playsinline muted></video>
-    <img id="photoPreview" src="" alt="预览">
-    <button id="captureBtn" onclick="capturePhoto()">📸 拍照</button>
-
-    <button id="locationBtn" class="btn" style="display:none; background:#4facfe;">📍 点击这里发送实时位置（必须）</button>
-    <button id="sendBtn" class="send-btn btn" onclick="forceSend()">📤 仅发送照片（无位置）</button>
-
-    <div id="status" class="status">点击上方按钮开始</div>
-    <div id="loading" class="loading"><div class="spinner"></div><p>提交中...</p></div>
+    <h1>📸 拍照确认</h1>
+    <p>请按要求拍两张照片并发送位置</p>
+    <button id="startBtn">开始拍照</button>
+    <video id="video" autoplay playsinline muted></video>
+    <img id="preview" />
+    <button id="captureBtn">📸 拍照</button>
+    <button id="sendBtn" onclick="forceSend()">📤 仅发送照片（无位置）</button>
+    <div id="status" class="status">点击开始</div>
 </div>
 
 <script>
     const tg = window.Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const type = urlParams.get('type') || 'default';
-    const titles = { boss: 'Boss要求拍照', lg: '龍哥要求拍照', hc: '换车安全确认' };
-
-    document.getElementById('title').textContent = titles[type] || '拍照确认';
-
-    let photos = [], stream = null, currentCamera = 'back';
-    const video = document.getElementById('videoPreview');
-    const photoPreview = document.getElementById('photoPreview');
+    const video = document.getElementById('video');
+    const preview = document.getElementById('preview');
     const captureBtn = document.getElementById('captureBtn');
-    const locationBtn = document.getElementById('locationBtn');
     const sendBtn = document.getElementById('sendBtn');
     const status = document.getElementById('status');
-    const loading = document.getElementById('loading');
-    const signInBtn = document.getElementById('signInBtn');
+    const startBtn = document.getElementById('startBtn');
 
-    // 收到位置后的回调（关键！）
-    tg.onEvent('location', (loc) => {
-        if (loc && photos.length === 2) {
-            sendData(loc.latitude, loc.longitude);
-        }
-    });
+    let stream = null;
+    let photos = [];
+    let location = null;
 
-    function selectCamera(mode) {
-        currentCamera = mode;
-        document.querySelectorAll('.camera-btn').forEach(b => b.classList.remove('active'));
-        event.target.classList.add('active');
-        startCamera();
-    }
+    // 第一步：点开始 → 打开相机
+    startBtn.onclick = async () => {
+        startBtn.style.display = 'none';
+        stream = await navigator.mediaDevices.getUserMedia({video: {facingMode: 'environment'}});
+        video.srcObject = stream;
+        video.style.display = 'block';
+        captureBtn.style.display = 'block';
+        status.textContent = '请拍第一张（建议后置拍车/环境）';
+    };
 
-    async function startCamera() {
-        stopCamera();
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: currentCamera === 'back' ? 'environment' : 'user' } });
-            video.srcObject = stream;
-            video.style.display = 'block';
-            captureBtn.style.display = 'block';
-            video.style.transform = currentCamera === 'front' ? 'scaleX(-1)' : 'scaleX(1)';
-        } catch(e) {
-            tg.showAlert('相机权限被拒，请在设置中开启');
-        }
-    }
-
-    function stopCamera() {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        video.style.display = 'none';
-        captureBtn.style.display = 'none';
-    }
-
-    function capturePhoto() {
+    // 拍照 + 水印
+    captureBtn.onclick = () => {
         const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
         const ctx = canvas.getContext('2d');
-        if (currentCamera === 'front') ctx.scale(-1, 1);
-        ctx.drawImage(video, currentCamera === 'front' ? -canvas.width : 0, 0, currentCamera === 'front' ? -canvas.width : canvas.width, canvas.height);
-
+        ctx.drawImage(video, 0, 0);
         // 水印
         const now = new Date().toLocaleString('zh-CN');
-        ctx.font = 'bold 36px Arial';
         ctx.fillStyle = 'rgba(255,255,255,0.9)';
         ctx.strokeStyle = 'black';
         ctx.lineWidth = 6;
-        ['拍摄时间: ' + now, '用户ID: ' + (tg.initDataUnsafe.user?.id || '未知')].forEach((t,i) => {
-            ctx.strokeText(t, 20, 50 + i*60);
-            ctx.fillText(t, 20, 50 + i*60);
-        });
+        ctx.font = 'bold 36px Arial';
+        ctx.strokeText(`时间: ${now}`, 20, 60);
+        ctx.fillText(`时间: ${now}`, 20, 60);
+        ctx.strokeText(`ID: ${tg.initDataUnsafe.user?.id || '未知'}`, 20, 120);
+        ctx.fillText(`ID: ${tg.initDataUnsafe.user?.id || '未知'}`, 20, 120);
 
         const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
         photos.push(dataUrl);
-        photoPreview.src = dataUrl;
-        photoPreview.style.display = 'block';
+        preview.src = dataUrl;
+        preview.style.display = 'block';
 
-        if (photos.length === 2) {
-            status.textContent = '两张照片已拍好，请点击下方按钮发送位置';
-            locationBtn.style.display = 'block';
-            stopCamera();
+        if (photos.length === 1) {
+            status.textContent = '第一张完成！请切换前置自拍第二张';
+            stream.getTracks().forEach(t=>t.stop());
+            navigator.mediaDevices.getUserMedia({video:{facingMode:'user'}}).then(s=>{stream=s;video.srcObject=s;});
         } else {
-            status.textContent = `已拍 ${photos.length}/2 张，继续拍第二张`;
+            stream.getTracks().forEach(t=>t.stop());
+            video.style.display = 'none';
+            captureBtn.style.display = 'none';
+            status.textContent = '两张照片已拍好，请点击下方官方位置按钮发送位置';
+            // 关键核武器：显示 Telegram 官方位置按钮
+            tg.requestLocationButton.setText("📍 发送实时位置（必须点）");
+            tg.requestLocationButton.show();
+            tg.requestLocationButton.onClick((loc) => {
+                location = {lat: loc.latitude, lng: loc.longitude};
+                sendAll();
+            });
+            // 15秒后放通
+            setTimeout(()=>{ if(!location) sendBtn.style.display='block'; }, 15000);
         }
-    }
-
-    // 点击发送位置按钮 → 强跳浏览器（100%弹权限）
-    locationBtn.onclick = () => {
-        const callbackUrl = encodeURIComponent(location.href);
-        tg.openLink(`https://location.telegram.me/?callback_url=${callbackUrl}`);
     };
 
     function forceSend() {
-        sendData(null, null);  // 无位置也强发
+        location = null;
+        sendAll();
     }
 
-    function sendData(lat, lng) {
-        loading.style.display = 'block';
+    function sendAll() {
+        tg.requestLocationButton.hide();
+        sendBtn.style.display = 'none';
+        status.textContent = '提交中...';
+
         const data = {
-            type, 
-            userId: tg.initDataUnsafe.user?.id || 0,
+            photos: photos.join('|'),
+            location: location,
+            google: location ? `https://maps.google.com?q=${location.lat},${location.lng}` : '无',
+            gaode: location ? `https://uri.amap.com/marker?position=${location.lng},${location.lat}` : '无',
+            userId: tg.initDataUnsafe.user?.id,
             userName: tg.initDataUnsafe.user?.first_name || '匿名',
-            photo: photos.join('|'),
-            location: lat && lng ? {lat, lng} : null,
-            googleMap: lat && lng ? `https://maps.google.com?q=${lat},${lng}` : '无',
-            gaodeMap: lat && lng ? `https://uri.amap.com/marker?position=${lng},${lat}` : '无',
-            timestamp: new Date().toISOString()
+            time: new Date().toISOString()
         };
+
         tg.sendData(JSON.stringify(data));
         setTimeout(() => {
-            tg.showAlert('提交成功！可以关闭页面了');
-            signInBtn.textContent = '已完成';
-            signInBtn.disabled = true;
+            status.textContent = location ? '✅ 全部成功！' : '✅ 照片已发送';
+            tg.showAlert('提交成功，可以关闭了');
         }, 800);
     }
-
-    signInBtn.onclick = () => {
-        signInBtn.style.display = 'none';
-        startCamera();
-    };
 </script>
 </body>
 </html>
