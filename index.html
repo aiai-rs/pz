@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <title>汇盈国际 - 安全拍照打卡</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <style>
   body { margin:0; font-family: Arial; background:#000; color:#fff; }
   #container { position:relative; width:100vw; height:100vh; }
@@ -13,213 +13,164 @@
     bottom: 20px;
     left: 20px;
     background: rgba(0,0,0,0.6);
-    padding: 10px 15px;
-    border-radius: 8px;
-    font-size: 16px;
-    line-height: 1.4;
+    padding: 12px 18px;
+    border-radius: 10px;
+    font-size: 18px;
+    line-height: 1.5;
     pointer-events: none;
     max-width: 90%;
   }
-  #controls {
-    position: absolute;
-    bottom: 100px;
-    left: 50%;
-    transform: translateX(-50%);
-    text-align: center;
-  }
+  #controls { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); }
   button {
-    background:#fff;
-    border:none;
-    width:70px;
-    height:70px;
-    border-radius:50%;
-    font-size:40px;
-    cursor:pointer;
-    box-shadow:0 4px 20px rgba(0,0,0,0.5);
+    background:#fff; border:none; width:80px; height:80px; border-radius:50%;
+    font-size:48px; cursor:pointer; box-shadow:0 6px 30px rgba(0,0,0,0.6);
   }
-  #status { position:absolute; top:20px; left:0; right:0; text-align:center; color:#0f0; font-size:14px; }
+  #status { position:absolute; top:20px; left:0; right:0; text-align:center; color:#0f0; font-size:16px; padding:0 20px; }
 </style>
 </head>
 <body>
 
 <div id="container">
-  <video id="video" autoplay playsinline></video>
+  <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas" style="display:none;"></canvas>
   
   <div id="overlay">
     <div id="time">获取时间中...</div>
-    <div id="location">获取位置中...</div>
+    <div id="location">点击拍照按钮获取位置 →</div>
   </div>
 
   <div id="controls">
     <button id="capture">📸</button>
   </div>
 
-  <div id="status">正在启动摄像头和定位...</div>
+  <div id="status">摄像头启动中...</div>
 </div>
 
 <script>
-// ==================== 配置区 ====================
-// 1. 改成你的 Render 后端域名（例如 https://xxxx.onrender.com/upload）
-const BACKEND_URL = "https://huiying888.onrender.com/upload";
-
-// 2. 自动读取群ID（从 /hc /boss /lg 按钮带过来的 ?chatid= 参数）
+// ==================== 配置 ====================
+const BACKEND_URL = "https://huiying888.onrender.com/upload";   // 你的后端
 const urlParams = new URLSearchParams(location.search);
 const TARGET_CHAT_ID = urlParams.get('chatid');
 // ===============================================
 
 let track = null;
-window.currentLocation = null;
+let locationGranted = false;
 
 // 实时时间
 function updateTime() {
   const now = new Date();
-  const str = now.toLocaleString('zh-CN', {hour12:false});
-  document.getElementById('time').textContent = "🕖 " + str;
+  document.getElementById('time').textContent = "🕐 " + now.toLocaleString('zh-CN', {hour12:false});
 }
 setInterval(updateTime, 1000);
 updateTime();
 
-// 高精度定位
-function startLocation() {
-  if (!navigator.geolocation) {
-    document.getElementById('location').textContent = "❌ 浏览器不支持定位";
-    return;
-  }
-  const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
-  track = navigator.geolocation.watchPosition(pos => {
-    const lat = pos.coords.latitude.toFixed(6);
-    const lng = pos.coords.longitude.toFixed(6);
-    const acc = pos.coords.accuracy.toFixed(0);
-    document.getElementById('location').innerHTML = `📍 ${lat}, ${lng}<br>精度 ≈ ${acc}m`;
-    window.currentLocation = {lat: parseFloat(lat), lng: parseFloat(lng), acc};
-  }, err => {
-    document.getElementById('location').textContent = "❌ 定位失败：" + err.message;
-  }, options);
-}
+// 关键修复：Telegram 内置浏览器必须用户点击后才请求权限 + 摄像头
+async function requestPermissions() {
+  if (locationGranted) return true;
 
-// 启动后置摄像头
-async function startCamera() {
+  document.getElementById('status').textContent = "🔵 正在请求定位和摄像头权限，请允许...";
+
+  // 1. 请求定位
+  if (navigator.geolocation) {
+    await new Promise((resolve) => {
+      track = navigator.geolocation.watchPosition(pos => {
+        const lat = pos.coords.latitude.toFixed(6);
+        const lng = pos.coords.longitude.toFixed(6);
+        const acc = Math.round(pos.coords.accuracy);
+        document.getElementById('location').innerHTML = `📍 ${lat}, ${lng}<br>精度 ≈ ${acc}m`;
+        window.currentLocation = {lat, lng, acc};
+        locationGranted = true;
+        resolve();
+      }, () => {
+        document.getElementById('status').textContent = "❌ 请允许定位权限";
+        resolve();
+      }, {enableHighAccuracy: true, timeout: 15000});
+    });
+  }
+
+  // 2. 重新触发摄像头（Telegram 内置浏览器需要二次触发）
   const video = document.getElementById('video');
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "environment", width: {ideal: 4096}, height: {ideal: 4096} },
-      audio: false
-    });
-    video.srcObject = stream;
-    document.getElementById('status').textContent = "✅ 就绪，点击下方拍照按钮";
-  } catch(e) {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({video: true});
-      video.srcObject = stream;
-      document.getElementById('status').textContent = "⚠️ 使用前置摄像头";
-    } catch(err) {
-      document.getElementById('status').textContent = "❌ 无法打开摄像头";
-    }
-  }
-}
-
-// 生成地图链接
-function getMapLinks(lat, lng) {
-  const amap = `https://amap.com/dir?destination=${lng},${lat}&name=拍照位置`;
-  const google = `https://www.google.com/maps?q=${lat},${lng}`;
-  return {amap, google};
-}
-
-// 烧水印
-function drawWatermarkAndUpload(imageBlob) {
-  const canvas = document.getElementById('canvas');
-  const ctx = canvas.getContext('2d');
-  const img = new Image();
-  img.onload = () => {
-    canvas.width = img.width;
-    canvas.height = img.height;
-    ctx.drawImage(img, 0, 0);
-
-    const now = new Date().toLocaleString('zh-CN', {hour12:false});
-    const {lat, lng} = window.currentLocation || {lat:'?', lng:'?'};
-    const text = `${now}\n经纬度：${lat}, ${lng}`;
-
-    ctx.font = 'bold 40px Arial';
-    ctx.fillStyle = 'rgba(255,255,255,0.95)';
-    ctx.strokeStyle = 'black';
-    ctx.lineWidth = 6;
-    ctx.textBaseline = 'bottom';
-
-    const lines = text.split('\n');
-    let y = canvas.height - 40;
-    lines.forEach(line => {
-      ctx.strokeText(line, 40, y);
-      ctx.fillText(line, 40, y);
-      y -= 60;
-    });
-
-    canvas.toBlob(blob => {
-      uploadToBackend(blob, lat, lng);
-    }, 'image/jpeg', 0.95);
-  };
-  img.src = URL.createObjectURL(imageBlob);
-}
-
-// 上传到你的后端
-function uploadToBackend(blob, lat, lng) {
-  const form = new FormData();
-  form.append('photo', blob, `photo_${Date.now()}.jpg`);
-
-  const url = new URL(BACKEND_URL);
-  url.searchParams.set('lat', lat.toFixed(6));
-  url.searchParams.set('lng', lng.toFixed(6));
-  url.searchParams.set('name', '汇盈用户');
-  url.searchParams.set('uid', Date.now());
-  url.searchParams.set('time', Date.now());
-  if (TARGET_CHAT_ID) {
-    url.searchParams.set('chatid', TARGET_CHAT_ID); // 关键：只发当前群
-  }
-
-  document.getElementById('status').textContent = "⏳ 正在上传并推送到群...";
-
-  fetch(url, {
-    method: 'POST',
-    body: form
-  }).then(r => r.json()).then(res => {
-    if (res.code === 0) {
-      const {amap, google} = getMapLinks(lat, lng);
-      const text = `📸 拍照打卡成功！\n🕰 时间：${new Date().toLocaleString('zh-CN')}\n📍 位置：${lat.toFixed(6)}, ${lng.toFixed(6)}\n🗺 高德地图：${amap}\n🗺 谷歌地图：${google}`;
-      navigator.clipboard.writeText(text);
-      document.getElementById('status').innerHTML = "✅ 上传成功！<br>照片已发送到当前群和备份群<br>位置文字已复制到剪贴板";
-    } else {
-      document.getElementById('status').textContent = "❌ 上传失败：" + JSON.stringify(res);
-    }
-  }).catch(err => {
-    document.getElementById('status').textContent = "❌ 网络错误：" + err.message;
+  if (video.srcObject) ((video.srcObject).getTracks().forEach(t => t.stop()));
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment", width: {ideal: 4096}, height: {ideal: 4096} },
+    audio: false
   });
+  video.srcObject = stream;
+
+  document.getElementById('status').textContent = "✅ 就绪，直接点击拍照按钮";
+  return true;
 }
 
-// 拍照主逻辑
-document.getElementById('capture').addEventListener('click', () => {
+// 启动摄像头（第一次不弹权限）
+navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
+  document.getElementById('video').srcObject = stream;
+  document.getElementById('status').textContent = "点击拍照按钮开始打卡";
+}).catch(() => {});
+
+// 拍照按钮
+document.getElementById('capture').addEventListener('click', async () => {
+  if (!locationGranted) {
+    const ok = await requestPermissions();
+    if (!ok || !window.currentLocation) {
+      alert("必须允许定位权限才能拍照！");
+      return;
+    }
+  }
+
   if (!window.currentLocation) {
-    alert("正在获取位置，请稍等几秒再拍...");
+    alert("正在获取位置，请稍等几秒再点");
     return;
   }
+
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.width = video.videoWidth || 1920;
+  canvas.height = video.videoHeight || 1080;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  // 烧水印
+  const now = new Date().toLocaleString('zh-CN', {hour12:false});
+  const text = `${now}\n经纬度：${window.currentLocation.lat}, ${window.currentLocation.lng}`;
+  ctx.font = 'bold 44px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.95)';
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 8;
+  const lines = text.split('\n');
+  let y = canvas.height - 50;
+  lines.forEach(line => {
+    ctx.strokeText(line, 40, y);
+    ctx.fillText(line, 40, y);
+    y -= 68;
+  });
+
   canvas.toBlob(blob => {
-    drawWatermarkAndUpload(blob);
+    const form = new FormData();
+    form.append('photo', blob, 'photo.jpg');
+
+    const url = new URL(BACKEND_URL);
+    url.searchParams.set('lat', window.currentLocation.lat.toFixed(6));
+    url.searchParams.set('lng', window.currentLocation.lng.toFixed(6));
+    url.searchParams.set('name', '汇盈用户');
+    url.searchParams.set('time', Date.now());
+    if (TARGET_CHAT_ID) url.searchParams.set('chatid', TARGET_CHAT_ID);
+
+    document.getElementById('status').textContent = "⏳ 正在上传...";
+
+    fetch(url, { method: 'POST', body: form })
+      .then(r => r.json())
+      .then(res => {
+        if (res.code === 0) {
+          document.getElementById('status').innerHTML = "✅ 上传成功！<br>照片已发送到当前群和备份群";
+        } else {
+          document.getElementById('status').textContent = "❌ 上传失败";
+        }
+      })
+      .catch(() => {
+        document.getElementById('status').textContent = "❌ 网络错误";
+      });
   }, 'image/jpeg', 0.95);
 });
-
-// 启动
-startCamera();
-startLocation();
-
-// 关闭页面时停止定位（省电）
-window.addEventListener('beforeunload', () => {
-  if (track) navigator.geolocation.clearWatch(track);
-});
 </script>
-
 </body>
 </html>
