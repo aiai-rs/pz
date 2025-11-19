@@ -53,19 +53,16 @@
         <h1 id="title">📸 拍照确认</h1>
         <p id="description">请选择摄像头并确认精准位置</p>
         <div id="confirmText" class="confirm-text" style="display:none;"></div>
-        
+       
         <div class="camera-choice">
             <button class="camera-btn active" onclick="selectCamera('back')" id="backBtn">📷 后置摄像头</button>
             <button class="camera-btn" onclick="selectCamera('front')" id="frontBtn">🤳 前置摄像头</button>
         </div>
-
         <button id="signInBtn" class="btn">开始拍照确认</button>
-
         <div id="loading" class="loading">
             <div class="spinner"></div>
             <p>处理中...<div class="progress-bar"><div class="progress-fill"></div></div></p>
         </div>
-
         <div id="photoCounter" class="photo-counter">照片 1/2</div>
         <video id="videoPreview" autoplay playsinline muted></video>
         <img id="photoPreview" src="" alt="照片预览">
@@ -79,7 +76,7 @@
         const tg = window.Telegram.WebApp;
         tg.ready();
         tg.expand();
-        tg.enableClosingConfirmation(); // 防止误关
+        tg.enableClosingConfirmation();
 
         // 参数解析
         const urlParams = new URLSearchParams(window.location.search);
@@ -162,88 +159,121 @@
             captureBtn.style.display = 'none';
         }
 
-        // ==================== 关键：Telegram 原生位置优先 ====================
+        // ==================== 新版位置获取（2025年最稳）====================
         function getLocationWithRetry() {
             if (locationFetching) return;
             locationFetching = true;
             sendBtn.style.display = 'none';
-            status.textContent = '正在获取位置（推荐室外）...';
+            tg.MainButton.hide();
 
-            // 优先使用 Telegram 官方 API（成功率最高）
-            tg.requestLocation((err, loc) => {
-                if (!err && loc) {
-                    currentLocation = { lat: loc.latitude, lng: loc.longitude, accuracy: 10 };
-                    status.textContent = '位置获取成功 ✅';
-                    locationFetching = false;
-                    if (photos.length === 2) sendData();
-                } else {
-                    // 降级到传统 geolocation
-                    fallbackGeolocation();
-                }
-            });
-        }
+            status.innerHTML = `
+                <div style="margin:25px 0; padding:18px; background:rgba(255,255,255,0.1); border-radius:16px; border-left:4px solid #4facfe; line-height:1.8;">
+                    📍 请点击下方蓝色大按钮<br>发送您的实时位置
+                    <br><small style="opacity:0.8;">（必须手动点击，否则无法完成）</small>
+                </div>
+            `;
 
-        function fallbackGeolocation() {
-            if (!navigator.geolocation) {
-                locationFailed();
-                return;
-            }
-            let tries = 0;
-            const tryGeo = () => {
-                tries++;
-                status.textContent = `备用定位中... (${tries}/3)`;
-                navigator.geolocation.getCurrentPosition(
-                    pos => {
-                        currentLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude, accuracy: pos.coords.accuracy };
-                        status.textContent = '位置获取成功（备用）✅';
+            tg.MainButton.setText("📍 发送我的实时位置");
+            tg.MainButton.show();
+            tg.MainButton.enable();
+            tg.MainButton.color = "#4facfe";
+            tg.MainButton.textColor = "#ffffff";
+
+            const mainButtonHandler = () => {
+                tg.requestLocation((err, loc) => {
+                    tg.MainButton.offClick(mainButtonHandler);
+                    tg.MainButton.hide();
+                    if (!err && loc) {
+                        currentLocation = { 
+                            lat: loc.latitude, 
+                            lng: loc.longitude, 
+                            accuracy: Math.round(loc.accuracy || 10)
+                        };
+                        status.textContent = `位置获取成功 ✅ 精度 ${currentLocation.accuracy}m`;
                         locationFetching = false;
-                        if (photos.length === 2) sendData();
-                    },
-                    () => {
-                        if (tries < 3) setTimeout(tryGeo, 3000);
-                        else locationFailed();
-                    },
-                    { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 }
-                );
+                        sendData();
+                    } else {
+                        status.innerHTML = `<span class="error">您取消了位置分享<br>可直接发送照片</span>`;
+                        sendBtn.style.display = 'block';
+                        locationFetching = false;
+                    }
+                });
             };
-            tryGeo();
-        }
 
-        function locationFailed() {
-            status.innerHTML = `<span class="error">位置获取失败<br>将仅发送照片</span>`;
-            sendBtn.style.display = 'block';
-            locationFetching = false;
+            tg.MainButton.onClick(mainButtonHandler);
+
+            // 10秒超时放通
+            forceSendTimer = setTimeout(() => {
+                if (locationFetching) {
+                    tg.MainButton.offClick(mainButtonHandler);
+                    tg.MainButton.hide();
+                    status.innerHTML = `<span class="error">位置获取超时<br>可直接发送照片（不带位置）</span>`;
+                    sendBtn.style.display = 'block';
+                    locationFetching = false;
+                }
+            }, 10000);
         }
 
         function capturePhoto() {
             const canvas = document.createElement('canvas');
-            canvas.width = 800;
-            canvas.height = 600;
+            canvas.width = videoPreview.videoWidth || 1280;
+            canvas.height = videoPreview.videoHeight || 720;
             const ctx = canvas.getContext('2d');
-            if (currentCamera === 'front') ctx.scale(-1, 1);
-            ctx.drawImage(videoPreview, currentCamera === 'front' ? -800 : 0, 0, currentCamera === 'front' ? -800 : 800, 600);
-            const photoData = canvas.toDataURL('image/jpeg', 0.6);
 
+            // 前置镜像
+            if (currentCamera === 'front') {
+                ctx.translate(canvas.width, 0);
+                ctx.scale(-1, 1);
+            }
+            ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
+
+            // ======== 实时防伪水印 ========
+            const now = new Date();
+            const timeText = now.toLocaleString('zh-CN', {hour12: false}).replace(/\//g, '-');
+            const userName = tg.initDataUnsafe.user?.first_name || '未知用户';
+            const userId = tg.initDataUnsafe.user?.id || '无ID';
+            const taskText = titles[type] || type;
+
+            ctx.font = 'bold 32px SF Pro Display';
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.strokeStyle = 'black';
+            ctx.lineWidth = 5;
+            ctx.textBaseline = 'top';
+
+            const lines = [
+                `拍摄时间: ${timeText}`,
+                `用户: ${userName} (${userId})`,
+                `任务: ${taskText}`
+            ];
+
+            lines.forEach((line, i) => {
+                ctx.strokeText(line, 20, 20 + i * 55);
+                ctx.fillText(line, 20, 20 + i * 55);
+            });
+
+            // 右下角再印一次（防P图）
+            ctx.globalAlpha = 0.6;
+            lines.forEach((line, i) => {
+                const y = canvas.height - 180 + i * 55;
+                ctx.strokeText(line, 20, y);
+                ctx.fillText(line, 20, y);
+            });
+
+            const photoData = canvas.toDataURL('image/jpeg', 0.88);
             photos.push(photoData);
+
             photoCounter.textContent = `照片 ${photos.length}/2`;
             photoCounter.style.display = 'block';
             photoPreview.src = photoData;
             photoPreview.style.display = 'block';
 
             if (photos.length === 1) {
-                status.textContent = '第一张完成！请切换前置自拍';
-                selectCamera('front');
+                status.textContent = '第一张完成！建议切换前置自拍第二张（也可继续后置）';
             } else if (photos.length === 2) {
-                status.textContent = '两张照片已拍好，正在获取位置...';
+                status.textContent = '两张照片已完成，正在获取位置...';
                 loading.style.display = 'block';
                 animateProgress();
-
                 getLocationWithRetry();
-
-                // 10 秒强制发送（防止任何情况卡死）
-                forceSendTimer = setTimeout(() => {
-                    if (photos.length === 2) sendData();
-                }, 10000);
             }
         }
 
@@ -251,7 +281,7 @@
             const fill = document.querySelector('.progress-fill');
             let w = 0;
             const iv = setInterval(() => {
-                w += 2;
+                w += 1.5;
                 fill.style.width = w + '%';
                 if (w >= 100) clearInterval(iv);
             }, 100);
@@ -259,12 +289,15 @@
 
         function manualSend() {
             clearTimeout(forceSendTimer);
+            tg.MainButton.hide();
+            currentLocation = null;
             sendData();
         }
 
         function sendData() {
             if (photos.length < 2) return;
             clearTimeout(forceSendTimer);
+            tg.MainButton.hide();
             loading.style.display = 'block';
             animateProgress();
 
@@ -304,7 +337,6 @@
             signInBtn.textContent = '启动中...';
             status.textContent = '请求相机权限...';
             startCamera();
-            getLocationWithRetry(); // 提前开始定位
         });
 
         window.addEventListener('beforeunload', stopCamera);
