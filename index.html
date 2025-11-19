@@ -32,24 +32,22 @@
 <div id="container">
   <video id="video" autoplay playsinline muted></video>
   <canvas id="canvas" style="display:none;"></canvas>
- 
   <div id="overlay">
     <div id="time">获取时间中...</div>
-    <div id="location">点击拍照按钮获取位置 →</div>
+    <div>纯后置测试版（无定位）</div>
   </div>
   <div id="controls">
     <button id="capture">📸</button>
   </div>
-  <div id="status">摄像头启动中...</div>
+  <div id="status">点击拍照按钮开始打卡</div>
 </div>
 <script>
 // ==================== 配置 ====================
-const BACKEND_URL = "https://huiying888.onrender.com/upload"; // 你的后端
+const BACKEND_URL = "https://huiying888.onrender.com/upload";
 const urlParams = new URLSearchParams(location.search);
 const TARGET_CHAT_ID = urlParams.get('chatid');
 // ===============================================
-let track = null;
-let locationGranted = false;
+
 // 实时时间
 function updateTime() {
   const now = new Date();
@@ -57,100 +55,63 @@ function updateTime() {
 }
 setInterval(updateTime, 1000);
 updateTime();
-// 关键修复：Telegram 内置浏览器必须用户点击后才请求权限 + 摄像头
-async function requestPermissions() {
-  if (locationGranted) return true;
-  document.getElementById('status').textContent = "🔵 正在请求定位和摄像头权限，请允许...";
-  // 1. 请求定位
-  if (navigator.geolocation) {
-    await new Promise((resolve) => {
-      track = navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude.toFixed(6);
-        const lng = pos.coords.longitude.toFixed(6);
-        const acc = Math.round(pos.coords.accuracy);
-        document.getElementById('location').innerHTML = `📍 ${lat}, ${lng}<br>精度 ≈ ${acc}m`;
-        window.currentLocation = {lat, lng, acc};
-        locationGranted = true;
-        resolve();
-      }, () => {
-        document.getElementById('status').textContent = "❌ 请允许定位权限";
-        resolve();
-      }, {enableHighAccuracy: true, timeout: 15000});
-    });
-  }
-  // 2. 重新触发摄像头（Telegram 内置浏览器需要二次触发）
+
+// 启动后置摄像头
+async function startCamera() {
   const video = document.getElementById('video');
-  if (video.srcObject) ((video.srcObject).getTracks().forEach(t => t.stop()));
+  if (video.srcObject) video.srcObject.getTracks().forEach(t => t.stop());
   const stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: "environment", width: {ideal: 4096}, height: {ideal: 4096} },
     audio: false
   });
   video.srcObject = stream;
-  document.getElementById('status').textContent = "✅ 就绪，直接点击拍照按钮";
-  return true;
 }
-// 启动摄像头（第一次不弹权限）
-navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
-  document.getElementById('video').srcObject = stream;
-  document.getElementById('status').textContent = "点击拍照按钮开始打卡";
-}).catch(() => {});
-// 拍照按钮
+
+// 拍照 + 水印
 document.getElementById('capture').addEventListener('click', async () => {
-  if (!locationGranted) {
-    const ok = await requestPermissions();
-    if (!ok || !window.currentLocation) {
-      alert("必须允许定位权限才能拍照！");
-      return;
-    }
-  }
-  if (!window.currentLocation) {
-    alert("正在获取位置，请稍等几秒再点");
-    return;
-  }
+  document.getElementById('status').textContent = "📸 正在拍照...";
+  await startCamera();
   const video = document.getElementById('video');
   const canvas = document.getElementById('canvas');
   canvas.width = video.videoWidth || 1920;
   canvas.height = video.videoHeight || 1080;
   const ctx = canvas.getContext('2d');
-  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-  // 烧水印
+  ctx.drawImage(video, 0, 0);
+
   const now = new Date().toLocaleString('zh-CN', {hour12:false});
-  const text = `${now}\n经纬度：${window.currentLocation.lat}, ${window.currentLocation.lng}`;
   ctx.font = 'bold 44px Arial';
   ctx.fillStyle = 'rgba(255,255,255,0.95)';
   ctx.strokeStyle = 'black';
   ctx.lineWidth = 8;
-  const lines = text.split('\n');
-  let y = canvas.height - 50;
-  lines.forEach(line => {
-    ctx.strokeText(line, 40, y);
-    ctx.fillText(line, 40, y);
-    y -= 68;
-  });
+  ctx.strokeText(now, 40, canvas.height - 80);
+  ctx.fillText(now, 40, canvas.height - 80);
+
   canvas.toBlob(blob => {
     const form = new FormData();
     form.append('photo', blob, 'photo.jpg');
     const url = new URL(BACKEND_URL);
-    url.searchParams.set('lat', window.currentLocation.lat.toFixed(6));
-    url.searchParams.set('lng', window.currentLocation.lng.toFixed(6));
+    url.searchParams.set('lat', '0');
+    url.searchParams.set('lng', '0');
     url.searchParams.set('name', '汇盈用户');
     url.searchParams.set('time', Date.now());
     if (TARGET_CHAT_ID) url.searchParams.set('chatid', TARGET_CHAT_ID);
+
     document.getElementById('status').textContent = "⏳ 正在上传...";
     fetch(url, { method: 'POST', body: form })
       .then(r => r.json())
       .then(res => {
-        if (res.code === 0) {
-          document.getElementById('status').innerHTML = "✅ 上传成功！<br>照片已发送到当前群和备份群";
-        } else {
-          document.getElementById('status').textContent = "❌ 上传失败";
-        }
+        document.getElementById('status').innerHTML = res.code === 0 
+          ? "✅ 上传成功！照片已发送" 
+          : "❌ 上传失败";
       })
-      .catch(() => {
-        document.getElementById('status').textContent = "❌ 网络错误";
-      });
+      .catch(() => document.getElementById('status').textContent = "❌ 网络错误");
   }, 'image/jpeg', 0.95);
 });
+
+// 页面加载启动摄像头
+navigator.mediaDevices.getUserMedia({video: true}).then(stream => {
+  document.getElementById('video').srcObject = stream;
+}).catch(() => {});
 </script>
 </body>
 </html>
