@@ -1,141 +1,350 @@
-const { Telegraf } = require('telegraf');
-const express = require('express');
-
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const app = express();
-
-// 群组配置
-const GROUP_CHAT_IDS = [
-  -1003354803364, -1003381368112, -1003308598858, -1003368574609, 
-  -1003286063197, -1003378109615, -1003293673373, -1003203365614,
-  -1000000000009, -1000000000010
-];
-const BACKUP_GROUP_ID = -1003293673373;
-
-// 中间件
-app.use(express.raw({ type: '*/*', limit: '50mb' }));
-
-// CORS
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', '*');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>汇盈国际 - 拍照测试</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  body { 
+    margin:0; 
+    font-family: Arial, sans-serif; 
+    background:#000; 
+    color:#fff; 
+    overflow:hidden; 
   }
-  next();
-});
+  #container { 
+    position:relative; 
+    width:100vw; 
+    height:100vh; 
+    background: #000;
+  }
+  video { 
+    width:100%; 
+    height:100%; 
+    object-fit:cover; 
+  }
+  #overlay { 
+    position:absolute; 
+    top:20px; 
+    left:20px; 
+    background:rgba(0,0,0,0.7); 
+    padding:15px; 
+    border-radius:12px; 
+    font-size:16px;
+  }
+  #controls { 
+    position:absolute; 
+    bottom:30px; 
+    left:50%; 
+    transform:translateX(-50%); 
+  }
+  button#capture { 
+    background:#fff; 
+    border:none; 
+    width:70px; 
+    height:70px; 
+    border-radius:50%; 
+    font-size:28px; 
+    cursor:pointer; 
+  }
+  button#capture:disabled { 
+    opacity:0.5; 
+    cursor:not-allowed; 
+  }
+  #loadingOverlay { 
+    position:absolute; 
+    top:0; 
+    left:0; 
+    width:100%; 
+    height:100%; 
+    background:rgba(0,0,0,0.85);
+    display:flex; 
+    flex-direction:column; 
+    align-items:center; 
+    justify-content:center; 
+    z-index:100;
+    opacity:0; 
+    transition:opacity 0.3s; 
+  }
+  #loadingOverlay.show { 
+    opacity:1; 
+  }
+  .spinner { 
+    width:50px; 
+    height:50px; 
+    border:4px solid #333; 
+    border-top:4px solid #4CAF50; 
+    border-radius:50%;
+    animation:spin 1s linear infinite; 
+    margin-bottom:20px; 
+  }
+  @keyframes spin { 
+    to { transform:rotate(360deg); } 
+  }
+  #status { 
+    position:absolute; 
+    top:50%; 
+    left:0; 
+    right:0; 
+    text-align:center; 
+    color:#4CAF50; 
+    padding:15px; 
+    transform: translateY(-50%); 
+    background: rgba(0,0,0,0.7); 
+    margin:20px; 
+    border-radius:10px; 
+  }
+  .error-message { 
+    position:absolute; 
+    bottom:180px; 
+    left:20px; 
+    right:20px; 
+    background:rgba(244,67,54,0.9); 
+    color:#fff; 
+    padding:12px; 
+    border-radius:10px; 
+    text-align:center; 
+    display:none; 
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" style="display:none;"></canvas>
 
-// 调试中间件
-app.use((req, res, next) => {
-  console.log('=== 收到请求 ===');
-  console.log('方法:', req.method);
-  console.log('路径:', req.path);
-  console.log('查询参数:', req.query);
-  console.log('内容类型:', req.get('Content-Type'));
-  console.log('内容长度:', req.get('Content-Length'));
-  console.log('================');
-  next();
-});
+  <div id="overlay">
+    <div id="time">获取时间中...</div>
+    <div>📍 测试模式 - 无定位</div>
+  </div>
 
-// 发送消息到群组
-async function sendToChat(chatId, photoBuffer, caption) {
+  <div id="status">准备启动摄像头...</div>
+
+  <div id="controls">
+    <button id="capture">📸</button>
+  </div>
+
+  <div id="errorMessage" class="error-message"></div>
+
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div>正在上传照片<br><small>请勿关闭页面</small></div>
+  </div>
+</div>
+
+<script>
+// 配置
+const BACKEND_URL = "https://huiying888.onrender.com/upload";
+const urlParams = new URLSearchParams(location.search);
+const TARGET_CHAT_ID = urlParams.get('chatid');
+
+let stream = null;
+let isUploading = false;
+
+// 显示错误信息
+function showError(message) {
+  const errorEl = document.getElementById('errorMessage');
+  errorEl.textContent = message;
+  errorEl.style.display = 'block';
+  setTimeout(() => errorEl.style.display = 'none', 5000);
+}
+
+// 实时时间
+function updateTime() {
+  const now = new Date();
+  document.getElementById('time').textContent = "🕐 " + now.toLocaleString('zh-CN', {hour12:false});
+}
+setInterval(updateTime, 1000);
+updateTime();
+
+// 显示/隐藏 loading
+function showLoading(show) {
+  document.getElementById('loadingOverlay').classList.toggle('show', show);
+}
+
+// 初始化摄像头 - 简化版本
+async function initCamera() {
   try {
-    await bot.telegram.sendPhoto(chatId, { source: photoBuffer }, {
-      caption,
-      parse_mode: 'Markdown'
-    });
-    console.log(`✅ 成功发送到群组 ${chatId}`);
+    // 停止之前的流
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+    
+    document.getElementById('status').textContent = "启动摄像头中...";
+    
+    // 简化约束条件
+    const constraints = {
+      video: {
+        facingMode: "environment", // 优先后置
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    };
+    
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    document.getElementById('video').srcObject = stream;
+    
+    document.getElementById('status').textContent = "✅ 摄像头就绪，点击拍照测试";
     return true;
+    
   } catch (error) {
-    console.error(`发送到群组 ${chatId} 失败:`, error.message);
-    return false;
+    console.error('摄像头启动失败:', error);
+    document.getElementById('status').textContent = "❌ 摄像头启动失败";
+    
+    // 尝试使用前置摄像头作为备选
+    try {
+      const fallbackConstraints = {
+        video: {
+          facingMode: "user",
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        },
+        audio: false
+      };
+      
+      stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      document.getElementById('video').srcObject = stream;
+      document.getElementById('status').textContent = "✅ 使用前置摄像头，点击拍照测试";
+      return true;
+    } catch (fallbackError) {
+      showError("无法访问摄像头，请检查权限设置");
+      return false;
+    }
   }
 }
 
-// 上传接口
-app.post('/upload', async (req, res) => {
-  console.log('📸 收到上传请求');
+// 上传照片 - 简化版本
+async function uploadPhoto(canvas) {
+  return new Promise((resolve, reject) => {
+    // 将canvas转换为Blob
+    canvas.toBlob(async (blob) => {
+      try {
+        console.log('创建FormData，图片大小:', blob.size);
+        
+        // 创建FormData
+        const formData = new FormData();
+        formData.append('photo', blob, 'test_photo.jpg');
+        
+        // 创建URL参数 - 简化版本，不包含位置信息
+        const params = new URLSearchParams();
+        params.set('name', '测试用户');
+        params.set('time', Date.now().toString());
+        if (TARGET_CHAT_ID) {
+          params.set('chatid', TARGET_CHAT_ID);
+        }
+        
+        const url = `${BACKEND_URL}?${params.toString()}`;
+        console.log('上传URL:', url);
+        
+        const response = await fetch(url, {
+          method: 'POST',
+          body: formData
+        });
+        
+        console.log('响应状态:', response.status, response.statusText);
+        
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        console.log('服务器响应:', result);
+        resolve(result);
+        
+      } catch (error) {
+        console.error('上传过程中错误:', error);
+        reject(error);
+      }
+    }, 'image/jpeg', 0.8); // 降低质量以减小文件大小
+  });
+}
+
+// 拍照主逻辑
+document.getElementById('capture').addEventListener('click', async () => {
+  if (isUploading) {
+    console.log('正在上传中，跳过点击');
+    return;
+  }
+  
+  console.log('开始拍照流程');
+  isUploading = true;
+  const btn = document.getElementById('capture');
+  btn.disabled = true;
+  showLoading(true);
   
   try {
-    // 获取查询参数
-    const { name = '测试用户', time, chatid } = req.query;
+    // 第一步：拍摄照片
+    document.getElementById('status').textContent = "拍摄照片中...";
     
-    console.log('📋 查询参数:', { name, time, chatid });
-    console.log('📦 请求体大小:', req.body.length);
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
     
-    // 验证图片数据
-    if (!req.body || req.body.length < 100) {
-      console.log('❌ 图片数据无效');
-      return res.status(400).json({ code: 1, msg: '图片数据无效' });
-    }
+    // 设置canvas尺寸
+    canvas.width = video.videoWidth || 640;
+    canvas.height = video.videoHeight || 480;
+    
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const formattedTime = time 
-      ? new Date(parseInt(time)).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-      : new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
+    // 添加简单水印
+    const now = new Date().toLocaleString('zh-CN', {hour12:false});
+    const text = `测试拍照 - ${now}\n无定位信息`;
+    
+    ctx.font = 'bold 24px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
 
-    const caption = `【测试拍照上传】\n用户：${name}\n时间：${formattedTime}\n备注：无定位信息测试`;
+    const x = 20;
+    const y = canvas.height - 20;
+    ctx.fillText(text, x, y);
 
-    console.log(`📤 准备发送照片，chatid: ${chatid}`);
+    console.log('照片拍摄完成，尺寸:', canvas.width, 'x', canvas.height);
 
-    let success = false;
-
-    // 发送到指定群组
-    if (chatid && GROUP_CHAT_IDS.includes(Number(chatid))) {
-      console.log(`📤 发送到来源群组: ${chatid}`);
-      const sent = await sendToChat(Number(chatid), req.body, caption);
-      if (sent) success = true;
-    }
-
-    // 发送到备份群组
-    console.log(`📤 发送到备份群组: ${BACKUP_GROUP_ID}`);
-    const backupSent = await sendToChat(BACKUP_GROUP_ID, req.body, `[备份] ${caption}`);
-    if (backupSent) success = true;
-
-    if (success) {
-      console.log('✅ 照片上传和处理完成');
-      res.json({ code: 0, msg: 'success' });
+    // 第二步：上传照片
+    document.getElementById('status').textContent = "上传照片中...";
+    
+    const result = await uploadPhoto(canvas);
+    
+    if (result && result.code === 0) {
+      document.getElementById('status').innerHTML = "✅ 测试成功！<br>上传完成";
+      console.log('上传成功');
     } else {
-      throw new Error('所有群组发送失败');
+      throw new Error(result?.msg || '服务器返回错误');
     }
-
-  } catch (err) {
-    console.error('❌ 上传失败:', err);
-    res.status(500).json({ code: 1, msg: err.message });
+    
+  } catch (error) {
+    console.error('拍照失败:', error);
+    document.getElementById('status').textContent = "❌ 拍照失败";
+    
+    let errorMsg = error.message;
+    if (error.message.includes('HTTP 400')) {
+      errorMsg = "请求格式错误 (HTTP 400)";
+    } else if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+      errorMsg = "网络连接失败";
+    }
+    
+    showError("上传失败: " + errorMsg);
+    
+  } finally {
+    // 重新启用按钮
+    btn.disabled = false;
+    isUploading = false;
+    showLoading(false);
   }
 });
 
-// 健康检查
-app.get('/', (req, res) => {
-  res.json({ 
-    status: 'online', 
-    message: '测试服务运行正常',
-    timestamp: new Date().toISOString()
-  });
+// 页面加载完成后初始化
+window.addEventListener('load', async () => {
+  console.log('页面加载完成，初始化摄像头');
+  await initCamera();
 });
 
-app.get('/test', (req, res) => {
-  res.json({ 
-    code: 0, 
-    message: '后端服务正常运行',
-    timestamp: new Date().toISOString()
-  });
+// 处理摄像头错误
+window.addEventListener('error', (event) => {
+  console.error('全局错误:', event.error);
 });
-
-// 启动服务器
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🌐 服务器启动成功，端口: ${PORT}`);
-});
-
-// 延迟启动Bot
-setTimeout(() => {
-  bot.launch().then(() => {
-    console.log('🚀 Bot 启动成功！');
-  }).catch(err => {
-    console.error('❌ Bot 启动失败:', err.message);
-  });
-}, 3000);
-
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+</script>
+</body>
+</html>
