@@ -26,7 +26,6 @@
     width:100%; 
     height:100%; 
     object-fit:cover; 
-    transform: scaleX(-1); /* 镜像翻转，更符合自拍习惯 */
   }
   #overlay { 
     position:absolute; 
@@ -162,11 +161,17 @@
     100% { opacity: 0.8; }
   }
 
-  /* 适配Telegram顶部栏 */
-  @media (height: 100vh) {
-    #container {
-      height: 100vh;
-    }
+  .error-message {
+    position: absolute;
+    bottom: 180px;
+    left: 20px;
+    right: 20px;
+    background: rgba(244,67,54,0.9);
+    color: #fff;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    text-align: center;
   }
 </style>
 </head>
@@ -180,7 +185,7 @@
     <div id="location">准备获取位置信息...</div>
   </div>
 
-  <div id="status">点击下方拍照按钮开始打卡</div>
+  <div id="status">准备启动后置摄像头...</div>
 
   <div id="controls">
     <button id="switchCamera" style="display:none;">🔁</button>
@@ -191,6 +196,9 @@
   <div id="permissionHint" class="permission-hint" style="display:none;">
     🔒 首次使用请允许「摄像头」和「位置」权限
   </div>
+
+  <!-- 错误提示 -->
+  <div id="errorMessage" class="error-message" style="display:none;"></div>
 
   <!-- Loading 动画层 -->
   <div id="loadingOverlay">
@@ -209,18 +217,26 @@ const TARGET_CHAT_ID = urlParams.get('chatid');
 let stream = null;
 let locationGranted = false;
 let isUploading = false;
-let currentFacingMode = 'user'; // 默认前置摄像头
-let isFirstClick = true;
+let currentFacingMode = 'environment'; // 默认后置摄像头
+let retryCount = 0;
+const MAX_RETRIES = 3;
+
+// 显示错误信息
+function showError(message) {
+  const errorEl = document.getElementById('errorMessage');
+  errorEl.textContent = message;
+  errorEl.style.display = 'block';
+  setTimeout(() => {
+    errorEl.style.display = 'none';
+  }, 5000);
+}
 
 // 初始化Telegram WebApp
 function initTelegramApp() {
   if (window.Telegram?.WebApp) {
-    // 设置Telegram主题色
     Telegram.WebApp.setHeaderColor('#000000');
     Telegram.WebApp.setBackgroundColor('#000000');
     Telegram.WebApp.expand();
-    
-    // 禁用下拉刷新
     Telegram.WebApp.disableVerticalSwipes();
   }
 }
@@ -233,7 +249,7 @@ function updateTime() {
 setInterval(updateTime, 1000);
 updateTime();
 
-// Telegram WebApp 自动关闭（成功后）
+// Telegram WebApp 自动关闭
 function closeWebApp() {
   if (window.Telegram?.WebApp?.close) {
     setTimeout(() => {
@@ -247,16 +263,18 @@ function showLoading(show) {
   document.getElementById('loadingOverlay').classList.toggle('show', show);
 }
 
-// 初始化摄像头
-async function initCamera(facingMode = 'user') {
+// 初始化摄像头 - 强制使用后置摄像头
+async function initCamera() {
   try {
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
     }
     
+    document.getElementById('status').textContent = "启动后置摄像头中...";
+    
     const constraints = {
       video: {
-        facingMode: facingMode,
+        facingMode: { exact: "environment" }, // 强制后置摄像头
         width: { ideal: 1920 },
         height: { ideal: 1080 }
       },
@@ -266,7 +284,7 @@ async function initCamera(facingMode = 'user') {
     stream = await navigator.mediaDevices.getUserMedia(constraints);
     document.getElementById('video').srcObject = stream;
     
-    // 显示切换摄像头按钮（如果设备支持多个摄像头）
+    // 检查是否支持多个摄像头
     if (navigator.mediaDevices.enumerateDevices) {
       const devices = await navigator.mediaDevices.enumerateDevices();
       const videoDevices = devices.filter(device => device.kind === 'videoinput');
@@ -275,11 +293,36 @@ async function initCamera(facingMode = 'user') {
       }
     }
     
+    document.getElementById('status').textContent = "✅ 后置摄像头就绪，点击拍照获取位置";
     return true;
   } catch (error) {
-    console.error('摄像头初始化失败:', error);
-    document.getElementById('status').textContent = "❌ 摄像头访问失败，请检查权限设置";
-    return false;
+    console.error('后置摄像头启动失败:', error);
+    
+    // 如果后置摄像头失败，尝试使用前置摄像头作为备选
+    try {
+      document.getElementById('status').textContent = "后置摄像头不可用，尝试前置摄像头...";
+      const fallbackConstraints = {
+        video: {
+          facingMode: "user",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      };
+      
+      stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
+      document.getElementById('video').srcObject = stream;
+      currentFacingMode = 'user';
+      
+      document.getElementById('status').textContent = "⚠️ 使用前置摄像头，点击拍照获取位置";
+      showError("后置摄像头不可用，已切换到前置摄像头");
+      return true;
+    } catch (fallbackError) {
+      console.error('前置摄像头也失败:', fallbackError);
+      document.getElementById('status').textContent = "❌ 摄像头启动失败，请检查权限";
+      showError("无法访问摄像头，请检查权限设置后刷新页面");
+      return false;
+    }
   }
 }
 
@@ -290,9 +333,7 @@ document.getElementById('switchCamera').addEventListener('click', async () => {
   currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
   document.getElementById('status').textContent = "切换摄像头中...";
   
-  await initCamera(currentFacingMode);
-  
-  document.getElementById('status').textContent = "✅ 摄像头已切换，点击拍照";
+  await initCamera();
 });
 
 // 获取位置信息
@@ -304,70 +345,85 @@ async function getLocation() {
       return;
     }
     
-    document.getElementById('status').textContent = "📍 正在获取精确定位...";
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
     
-    const watchId = navigator.geolocation.watchPosition(
-      (position) => {
-        const lat = position.coords.latitude.toFixed(6);
-        const lng = position.coords.longitude.toFixed(6);
-        const acc = Math.round(position.coords.accuracy);
-        
-        document.getElementById('location').innerHTML = 
-          `📍 ${lat}, ${lng}<br>精度: ${acc}米`;
-        
-        if (acc > 50) {
-          document.getElementById('location').innerHTML += 
-            '<br><span style="color:#ff9800">⚠️ 定位精度较低，建议移动至开阔区域</span>';
-        }
-        
-        window.currentLocation = { lat, lng, acc };
-        locationGranted = true;
-        navigator.geolocation.clearWatch(watchId);
-        resolve({ lat, lng, acc });
-      },
-      (error) => {
-        let errorMsg = "❌ 定位获取失败";
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            errorMsg = "❌ 定位权限被拒绝，请在设置中允许位置访问";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMsg = "❌ 定位信息不可用";
-            break;
-          case error.TIMEOUT:
-            errorMsg = "❌ 定位请求超时";
-            break;
-        }
-        document.getElementById('location').textContent = errorMsg;
-        document.getElementById('status').textContent = "定位失败，拍照将无位置信息";
-        resolve(null);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 0
+    const success = (position) => {
+      const lat = position.coords.latitude.toFixed(6);
+      const lng = position.coords.longitude.toFixed(6);
+      const acc = Math.round(position.coords.accuracy);
+      
+      document.getElementById('location').innerHTML = 
+        `📍 ${lat}, ${lng}<br>精度: ${acc}米`;
+      
+      if (acc > 50) {
+        document.getElementById('location').innerHTML += 
+          '<br><span style="color:#ff9800">⚠️ 定位精度较低，建议移动至开阔区域</span>';
       }
-    );
+      
+      window.currentLocation = { lat, lng, acc };
+      locationGranted = true;
+      resolve({ lat, lng, acc });
+    };
     
-    // 超时保护
-    setTimeout(() => {
-      navigator.geolocation.clearWatch(watchId);
-      if (!locationGranted) {
-        document.getElementById('status').textContent = "定位超时，将使用最后获取的位置";
-        resolve(window.currentLocation || null);
+    const error = (err) => {
+      let errorMsg = "❌ 定位获取失败";
+      switch(err.code) {
+        case err.PERMISSION_DENIED:
+          errorMsg = "❌ 定位权限被拒绝，请在设置中允许位置访问";
+          break;
+        case err.POSITION_UNAVAILABLE:
+          errorMsg = "❌ 定位信息不可用";
+          break;
+        case err.TIMEOUT:
+          errorMsg = "❌ 定位请求超时";
+          break;
       }
-    }, 10000);
+      document.getElementById('location').textContent = errorMsg;
+      showError(errorMsg);
+      resolve(null);
+    };
+    
+    navigator.geolocation.getCurrentPosition(success, error, options);
   });
 }
 
-// 初始静默开启前置摄像头（用户体验更好）
-async function initPreviewCamera() {
+// 上传照片到服务器
+async function uploadPhoto(blob, location) {
+  const formData = new FormData();
+  formData.append('photo', blob, 'daka.jpg');
+
+  const url = new URL(BACKEND_URL);
+  if (location) {
+    url.searchParams.set('lat', location.lat);
+    url.searchParams.set('lng', location.lng);
+    url.searchParams.set('acc', location.acc);
+  }
+  url.searchParams.set('name', '汇盈用户');
+  url.searchParams.set('time', Date.now());
+  url.searchParams.set('facing', currentFacingMode);
+  if (TARGET_CHAT_ID) {
+    url.searchParams.set('chatid', TARGET_CHAT_ID);
+  }
+
   try {
-    await initCamera('user');
-    document.getElementById('status').textContent = "✅ 准备就绪，点击拍照按钮开始打卡";
-    document.getElementById('permissionHint').style.display = 'block';
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
+    const result = await response.json();
+    return result;
   } catch (error) {
-    document.getElementById('status').textContent = "❌ 摄像头初始化失败，请刷新页面重试";
+    console.error('上传错误:', error);
+    throw new Error(`网络请求失败: ${error.message}`);
   }
 }
 
@@ -375,64 +431,39 @@ async function initPreviewCamera() {
 document.getElementById('capture').addEventListener('click', async () => {
   if (isUploading) return;
   
-  // 第一次点击时获取权限和位置
-  if (isFirstClick) {
-    isFirstClick = false;
-    document.getElementById('permissionHint').style.display = 'none';
-    
-    // 切换到后置摄像头（如果需要）
-    if (currentFacingMode !== 'environment') {
-      document.getElementById('status').textContent = "🔄 切换到后置摄像头...";
-      await initCamera('environment');
-    }
-    
-    // 获取位置信息
-    document.getElementById('status').textContent = "📍 获取定位信息中...";
-    await getLocation();
-    
-    document.getElementById('status').textContent = "✅ 准备就绪，点击拍照完成打卡";
-    return; // 第一次点击只做准备工作
-  }
-  
-  // 正式拍照逻辑
-  if (!window.currentLocation) {
-    const proceed = confirm("定位信息尚未准备好，是否继续拍照？（照片将无位置信息）");
-    if (!proceed) return;
-  }
-
   isUploading = true;
   const btn = document.getElementById('capture');
   btn.disabled = true;
   showLoading(true);
-  document.getElementById('status').textContent = "正在处理照片...";
-
+  
   try {
+    document.getElementById('status').textContent = "获取位置信息中...";
+    
+    // 并行获取位置和准备照片
+    const [location] = await Promise.all([
+      getLocation(),
+      new Promise(resolve => setTimeout(resolve, 100)) // 给位置获取一点启动时间
+    ]);
+    
+    document.getElementById('status').textContent = "拍摄照片中...";
+    
+    // 拍摄照片
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
-    
-    // 根据摄像头方向决定是否镜像翻转
-    if (currentFacingMode === 'user') {
-      ctx.translate(canvas.width, 0);
-      ctx.scale(-1, 1);
-    }
-    
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // 重置变换
-    if (currentFacingMode === 'user') {
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-    }
 
     // 添加水印
     const now = new Date().toLocaleString('zh-CN', {hour12:false});
-    const locationText = window.currentLocation 
-      ? `经纬度：${window.currentLocation.lat},${window.currentLocation.lng} 精度:${window.currentLocation.acc}m`
+    const locationText = location 
+      ? `经纬度：${location.lat},${location.lng} 精度:${location.acc}m`
       : '位置信息获取失败';
     
-    const text = `${now}\n${locationText}`;
+    const cameraText = currentFacingMode === 'environment' ? '后置摄像头' : '前置摄像头';
+    const text = `${now}\n${locationText}\n${cameraText}`;
+    
     ctx.font = 'bold 32px Arial';
     ctx.strokeStyle = 'rgba(0,0,0,0.8)';
     ctx.lineWidth = 6;
@@ -447,60 +478,60 @@ document.getElementById('capture').addEventListener('click', async () => {
     ctx.fillText(text, x, y);
 
     // 转换为Blob并上传
-    canvas.toBlob(async (blob) => {
-      const formData = new FormData();
-      formData.append('photo', blob, 'daka.jpg');
-
-      const url = new URL(BACKEND_URL);
-      url.searchParams.set('lat', window.currentLocation?.lat || '');
-      url.searchParams.set('lng', window.currentLocation?.lng || '');
-      url.searchParams.set('acc', window.currentLocation?.acc || '');
-      url.searchParams.set('name', '汇盈用户');
-      url.searchParams.set('time', Date.now());
-      if (TARGET_CHAT_ID) url.searchParams.set('chatid', TARGET_CHAT_ID);
-
-      try {
-        const response = await fetch(url, {
-          method: 'POST',
-          body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (result.code === 0) {
-          document.getElementById('status').innerHTML = "✅ 打卡成功！<br>3秒后自动关闭";
-          setTimeout(closeWebApp, 3000);
-        } else {
-          throw new Error(result.msg || '上传失败');
-        }
-      } catch (error) {
-        console.error('上传错误:', error);
-        document.getElementById('status').textContent = "❌ 上传失败: " + error.message;
+    document.getElementById('status').textContent = "上传照片中...";
+    
+    const blob = await new Promise(resolve => {
+      canvas.toBlob(resolve, 'image/jpeg', 0.9);
+    });
+    
+    const result = await uploadPhoto(blob, location);
+    
+    if (result.code === 0) {
+      document.getElementById('status').innerHTML = "✅ 打卡成功！<br>3秒后自动关闭";
+      setTimeout(closeWebApp, 3000);
+    } else {
+      throw new Error(result.msg || '服务器返回错误');
+    }
+    
+  } catch (error) {
+    console.error('打卡失败:', error);
+    
+    // 重试逻辑
+    if (retryCount < MAX_RETRIES) {
+      retryCount++;
+      showError(`上传失败，3秒后重试 (${retryCount}/${MAX_RETRIES})`);
+      setTimeout(() => {
         btn.disabled = false;
         isUploading = false;
         showLoading(false);
-      }
-    }, 'image/jpeg', 0.9);
-
-  } catch (error) {
-    console.error('拍照错误:', error);
-    document.getElementById('status').textContent = "❌ 拍照失败，请重试";
-    btn.disabled = false;
-    isUploading = false;
-    showLoading(false);
+        document.getElementById('status').textContent = "准备重试...";
+      }, 3000);
+    } else {
+      document.getElementById('status').textContent = "❌ 打卡失败";
+      showError(`上传失败: ${error.message}`);
+      btn.disabled = false;
+      isUploading = false;
+      showLoading(false);
+    }
   }
 });
 
 // 页面加载完成后初始化
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   initTelegramApp();
-  initPreviewCamera();
+  document.getElementById('permissionHint').style.display = 'block';
+  
+  // 直接启动后置摄像头
+  const cameraStarted = await initCamera();
+  if (cameraStarted) {
+    document.getElementById('permissionHint').style.display = 'none';
+  }
 });
 
-// 页面可见性变化处理（防止切屏后摄像头停止）
+// 页面可见性变化处理
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && !stream) {
-    initPreviewCamera();
+    initCamera();
   }
 });
 </script>
