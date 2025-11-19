@@ -2,349 +2,175 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>汇盈国际 - 拍照测试</title>
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>拍照上传测试</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <style>
-  body { 
-    margin:0; 
-    font-family: Arial, sans-serif; 
-    background:#000; 
-    color:#fff; 
-    overflow:hidden; 
-  }
-  #container { 
-    position:relative; 
-    width:100vw; 
-    height:100vh; 
+  body {
+    margin: 0;
+    padding: 20px;
+    font-family: Arial;
     background: #000;
+    color: white;
+    text-align: center;
   }
-  video { 
-    width:100%; 
-    height:100%; 
-    object-fit:cover; 
+  #video {
+    width: 100%;
+    max-width: 400px;
+    height: 300px;
+    background: #333;
+    margin: 20px auto;
+    display: block;
   }
-  #overlay { 
-    position:absolute; 
-    top:20px; 
-    left:20px; 
-    background:rgba(0,0,0,0.7); 
-    padding:15px; 
-    border-radius:12px; 
-    font-size:16px;
+  button {
+    background: #4CAF50;
+    color: white;
+    border: none;
+    padding: 15px 30px;
+    font-size: 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin: 10px;
   }
-  #controls { 
-    position:absolute; 
-    bottom:30px; 
-    left:50%; 
-    transform:translateX(-50%); 
+  button:disabled {
+    background: #666;
+    cursor: not-allowed;
   }
-  button#capture { 
-    background:#fff; 
-    border:none; 
-    width:70px; 
-    height:70px; 
-    border-radius:50%; 
-    font-size:28px; 
-    cursor:pointer; 
-  }
-  button#capture:disabled { 
-    opacity:0.5; 
-    cursor:not-allowed; 
-  }
-  #loadingOverlay { 
-    position:absolute; 
-    top:0; 
-    left:0; 
-    width:100%; 
-    height:100%; 
-    background:rgba(0,0,0,0.85);
-    display:flex; 
-    flex-direction:column; 
-    align-items:center; 
-    justify-content:center; 
-    z-index:100;
-    opacity:0; 
-    transition:opacity 0.3s; 
-  }
-  #loadingOverlay.show { 
-    opacity:1; 
-  }
-  .spinner { 
-    width:50px; 
-    height:50px; 
-    border:4px solid #333; 
-    border-top:4px solid #4CAF50; 
-    border-radius:50%;
-    animation:spin 1s linear infinite; 
-    margin-bottom:20px; 
-  }
-  @keyframes spin { 
-    to { transform:rotate(360deg); } 
-  }
-  #status { 
-    position:absolute; 
-    top:50%; 
-    left:0; 
-    right:0; 
-    text-align:center; 
-    color:#4CAF50; 
-    padding:15px; 
-    transform: translateY(-50%); 
-    background: rgba(0,0,0,0.7); 
-    margin:20px; 
-    border-radius:10px; 
-  }
-  .error-message { 
-    position:absolute; 
-    bottom:180px; 
-    left:20px; 
-    right:20px; 
-    background:rgba(244,67,54,0.9); 
-    color:#fff; 
-    padding:12px; 
-    border-radius:10px; 
-    text-align:center; 
-    display:none; 
+  #status {
+    margin: 20px;
+    padding: 10px;
+    background: #333;
+    border-radius: 5px;
+    min-height: 40px;
   }
 </style>
 </head>
 <body>
-<div id="container">
-  <video id="video" autoplay playsinline muted></video>
-  <canvas id="canvas" style="display:none;"></canvas>
+<h1>拍照上传测试</h1>
 
-  <div id="overlay">
-    <div id="time">获取时间中...</div>
-    <div>📍 测试模式 - 无定位</div>
-  </div>
+<video id="video" autoplay playsinline muted></video>
+<br>
+<button id="capture">📸 点击拍照并上传</button>
 
-  <div id="status">准备启动摄像头...</div>
-
-  <div id="controls">
-    <button id="capture">📸</button>
-  </div>
-
-  <div id="errorMessage" class="error-message"></div>
-
-  <div id="loadingOverlay">
-    <div class="spinner"></div>
-    <div>正在上传照片<br><small>请勿关闭页面</small></div>
-  </div>
-</div>
+<div id="status">准备中...</div>
 
 <script>
-// 配置
-const BACKEND_URL = "https://huiying888.onrender.com/upload";
-const urlParams = new URLSearchParams(location.search);
-const TARGET_CHAT_ID = urlParams.get('chatid');
+const video = document.getElementById('video');
+const captureBtn = document.getElementById('capture');
+const statusDiv = document.getElementById('status');
 
 let stream = null;
-let isUploading = false;
 
-// 显示错误信息
-function showError(message) {
-  const errorEl = document.getElementById('errorMessage');
-  errorEl.textContent = message;
-  errorEl.style.display = 'block';
-  setTimeout(() => errorEl.style.display = 'none', 5000);
-}
-
-// 实时时间
-function updateTime() {
-  const now = new Date();
-  document.getElementById('time').textContent = "🕐 " + now.toLocaleString('zh-CN', {hour12:false});
-}
-setInterval(updateTime, 1000);
-updateTime();
-
-// 显示/隐藏 loading
-function showLoading(show) {
-  document.getElementById('loadingOverlay').classList.toggle('show', show);
-}
-
-// 初始化摄像头 - 简化版本
+// 初始化摄像头
 async function initCamera() {
   try {
-    // 停止之前的流
-    if (stream) {
-      stream.getTracks().forEach(track => track.stop());
-    }
+    statusDiv.textContent = "正在启动摄像头...";
     
-    document.getElementById('status').textContent = "启动摄像头中...";
+    stream = await navigator.mediaDevices.getUserMedia({ 
+      video: { facingMode: "environment" },
+      audio: false 
+    });
     
-    // 简化约束条件
-    const constraints = {
-      video: {
-        facingMode: "environment", // 优先后置
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      },
-      audio: false
-    };
-    
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
-    document.getElementById('video').srcObject = stream;
-    
-    document.getElementById('status').textContent = "✅ 摄像头就绪，点击拍照测试";
-    return true;
+    video.srcObject = stream;
+    statusDiv.textContent = "✅ 摄像头就绪！点击拍照上传";
+    captureBtn.disabled = false;
     
   } catch (error) {
-    console.error('摄像头启动失败:', error);
-    document.getElementById('status').textContent = "❌ 摄像头启动失败";
-    
-    // 尝试使用前置摄像头作为备选
+    // 如果后置失败，尝试前置
     try {
-      const fallbackConstraints = {
-        video: {
-          facingMode: "user",
-          width: { ideal: 1280 },
-          height: { ideal: 720 }
-        },
-        audio: false
-      };
+      stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true,
+        audio: false 
+      });
       
-      stream = await navigator.mediaDevices.getUserMedia(fallbackConstraints);
-      document.getElementById('video').srcObject = stream;
-      document.getElementById('status').textContent = "✅ 使用前置摄像头，点击拍照测试";
-      return true;
+      video.srcObject = stream;
+      statusDiv.textContent = "✅ 摄像头就绪（前置）！点击拍照上传";
+      captureBtn.disabled = false;
     } catch (fallbackError) {
-      showError("无法访问摄像头，请检查权限设置");
-      return false;
+      statusDiv.textContent = "❌ 无法访问摄像头";
+      captureBtn.disabled = true;
     }
   }
 }
 
-// 上传照片 - 简化版本
-async function uploadPhoto(canvas) {
-  return new Promise((resolve, reject) => {
-    // 将canvas转换为Blob
-    canvas.toBlob(async (blob) => {
-      try {
-        console.log('创建FormData，图片大小:', blob.size);
-        
-        // 创建FormData
-        const formData = new FormData();
-        formData.append('photo', blob, 'test_photo.jpg');
-        
-        // 创建URL参数 - 简化版本，不包含位置信息
-        const params = new URLSearchParams();
-        params.set('name', '测试用户');
-        params.set('time', Date.now().toString());
-        if (TARGET_CHAT_ID) {
-          params.set('chatid', TARGET_CHAT_ID);
-        }
-        
-        const url = `${BACKEND_URL}?${params.toString()}`;
-        console.log('上传URL:', url);
-        
-        const response = await fetch(url, {
-          method: 'POST',
-          body: formData
-        });
-        
-        console.log('响应状态:', response.status, response.statusText);
-        
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
-        console.log('服务器响应:', result);
-        resolve(result);
-        
-      } catch (error) {
-        console.error('上传过程中错误:', error);
-        reject(error);
-      }
-    }, 'image/jpeg', 0.8); // 降低质量以减小文件大小
-  });
-}
-
-// 拍照主逻辑
-document.getElementById('capture').addEventListener('click', async () => {
-  if (isUploading) {
-    console.log('正在上传中，跳过点击');
-    return;
+// 上传照片
+async function uploadPhoto(blob) {
+  const formData = new FormData();
+  formData.append('photo', blob, 'test.jpg');
+  
+  // 添加基本参数
+  const params = new URLSearchParams();
+  params.append('name', '测试用户');
+  params.append('time', Date.now().toString());
+  
+  // 从URL获取chatid
+  const urlParams = new URLSearchParams(window.location.search);
+  const chatid = urlParams.get('chatid');
+  if (chatid) {
+    params.append('chatid', chatid);
   }
   
-  console.log('开始拍照流程');
-  isUploading = true;
-  const btn = document.getElementById('capture');
-  btn.disabled = true;
-  showLoading(true);
+  const url = `https://huiying888.onrender.com/upload?${params.toString()}`;
   
   try {
-    // 第一步：拍摄照片
-    document.getElementById('status').textContent = "拍摄照片中...";
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData
+    });
     
-    const video = document.getElementById('video');
-    const canvas = document.getElementById('canvas');
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
     
-    // 设置canvas尺寸
-    canvas.width = video.videoWidth || 640;
-    canvas.height = video.videoHeight || 480;
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    throw error;
+  }
+}
+
+// 拍照并上传
+captureBtn.addEventListener('click', async function() {
+  console.log("开始拍照上传流程");
+  
+  captureBtn.disabled = true;
+  statusDiv.textContent = "拍照中...";
+  
+  try {
+    // 拍照
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
     
     const ctx = canvas.getContext('2d');
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    // 添加简单水印
-    const now = new Date().toLocaleString('zh-CN', {hour12:false});
-    const text = `测试拍照 - ${now}\n无定位信息`;
     
-    ctx.font = 'bold 24px Arial';
-    ctx.fillStyle = 'rgba(255,255,255,0.9)';
-    ctx.textBaseline = 'bottom';
-    ctx.textAlign = 'left';
-
-    const x = 20;
-    const y = canvas.height - 20;
-    ctx.fillText(text, x, y);
-
-    console.log('照片拍摄完成，尺寸:', canvas.width, 'x', canvas.height);
-
-    // 第二步：上传照片
-    document.getElementById('status').textContent = "上传照片中...";
+    statusDiv.textContent = "上传中...";
     
-    const result = await uploadPhoto(canvas);
-    
-    if (result && result.code === 0) {
-      document.getElementById('status').innerHTML = "✅ 测试成功！<br>上传完成";
-      console.log('上传成功');
-    } else {
-      throw new Error(result?.msg || '服务器返回错误');
-    }
+    // 转换为Blob并上传
+    canvas.toBlob(async (blob) => {
+      try {
+        const result = await uploadPhoto(blob);
+        
+        if (result && result.code === 0) {
+          statusDiv.textContent = "✅ 上传成功！";
+        } else {
+          statusDiv.textContent = "❌ 上传失败: " + (result.msg || '未知错误');
+        }
+      } catch (error) {
+        statusDiv.textContent = "❌ 上传失败: " + error.message;
+      } finally {
+        captureBtn.disabled = false;
+      }
+    }, 'image/jpeg', 0.8);
     
   } catch (error) {
-    console.error('拍照失败:', error);
-    document.getElementById('status').textContent = "❌ 拍照失败";
-    
-    let errorMsg = error.message;
-    if (error.message.includes('HTTP 400')) {
-      errorMsg = "请求格式错误 (HTTP 400)";
-    } else if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
-      errorMsg = "网络连接失败";
-    }
-    
-    showError("上传失败: " + errorMsg);
-    
-  } finally {
-    // 重新启用按钮
-    btn.disabled = false;
-    isUploading = false;
-    showLoading(false);
+    statusDiv.textContent = "❌ 拍照失败: " + error.message;
+    captureBtn.disabled = false;
   }
 });
 
-// 页面加载完成后初始化
-window.addEventListener('load', async () => {
-  console.log('页面加载完成，初始化摄像头');
-  await initCamera();
-});
-
-// 处理摄像头错误
-window.addEventListener('error', (event) => {
-  console.error('全局错误:', event.error);
-});
+// 页面加载后初始化
+window.addEventListener('load', initCamera);
 </script>
 </body>
 </html>
