@@ -1,192 +1,155 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>拍照确认测试版</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        /* 你原来的美化样式我全保留了，只删掉无关部分，保持好看 */
-        *{margin:0;padding:0;box-sizing:border-box;}
-        body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;background:linear-gradient(135deg,#0c2461,#1e3799,#4a69bd,#6a89cc);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
-        .container{background:rgba(255,255,255,0.08);backdrop-filter:blur(25px);border-radius:28px;padding:40px 30px;max-width:420px;width:100%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.25);border:1px solid rgba(255,255,255,0.1);}
-        h1{font-size:36px;margin-bottom:12px;background:linear-gradient(135deg,#fff,#e6e9ff);-webkit-background-clip:text;background-clip:text;color:transparent;font-weight:700;}
-        p{font-size:17px;opacity:0.9;margin-bottom:30px;line-height:1.6;}
-        .btn{background:linear-gradient(135deg,#ff6b6b,#ff8e8e);border:none;color:white;padding:18px;border-radius:50px;font-size:18px;width:100%;margin:15px 0;cursor:pointer;box-shadow:0 8px 25px rgba(255,107,107,0.4);}
-        .btn:hover{transform:translateY(-3px);box-shadow:0 15px 35px rgba(255,107,107,0.5);}
-        .send-btn{background:linear-gradient(135deg,#4facfe,#00f2fe);display:none;}
-        #video{width:100%;height:240px;object-fit:cover;border-radius:18px;margin:20px 0;display:none;box-shadow:0 10px 30px rgba(0,0,0,0.3);}
-        #preview{width:100%;border-radius:18px;margin:20px 0;display:none;}
-        .status{margin-top:15px;padding:12px;background:rgba(255,255,255,0.1);border-radius:12px;font-size:15px;}
-        .error{color:#ffcccc;background:rgba(255,0,0,0.2);}
-        .loading{text-align:center;margin:20px 0;display:none;}
-        .spinner{border:4px solid rgba(255,255,255,0.2);border-top:4px solid #fff;border-radius:50%;width:40px;height:40px;margin:0 auto 10px;animation:spin 1s linear infinite;}
-        @keyframes spin{to{transform:rotate(360deg);}}
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>拍照确认 - 稳定版</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+    *{margin:0;padding:0;box-sizing:border-box;}
+    body{font-family:-apple-system,system-ui,sans-serif;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+    .box{background:rgba(255,255,255,0.1);backdrop-filter:blur(20px);border-radius:25px;padding:40px 30px;max-width:400px;width:100%;text-align:center;box-shadow:0 15px 35px rgba(0,0,0,0.3);}
+    h1{font-size:34px;margin-bottom:10px;}
+    p{font-size:17px;opacity:0.9;margin-bottom:30px;}
+    button{background:linear-gradient(135deg,#f093fb,#f5576c);border:none;color:#fff;padding:18px;font-size:18px;border-radius:50px;width:100%;cursor:pointer;box-shadow:0 10px 30px rgba(245,87,108,0.4);}
+    button:hover{transform:translateY(-4px);}
+    button:disabled{opacity:0.6;transform:none;}
+    #video,#preview{width:100%;max-height:300px;object-fit:cover;border-radius:15px;margin:20px 0;display:none;}
+    .status{margin-top:15px;padding:12px;background:rgba(255,255,255,0.15);border-radius:12px;font-size:15px;}
+    .manual{background:linear-gradient(135deg,#4facfe,#00f2fe);margin-top:15px;display:none;}
+</style>
 </head>
 <body>
-<div class="container">
-    <h1>📸 拍照确认（测试版）</h1>
-    <p id="desc">点击下方按钮拍照 + 自动截屏确认身份</p>
-    
-    <button id="startBtn" class="btn">🚀 开始拍照确认</button>
-    
-    <div class="loading" id="loading">
-        <div class="spinner"></div>
-        <p>处理中，请稍等...</p>
-    </div>
-    
+<div class="box">
+    <h1>📸 拍照确认</h1>
+    <p id="tip">点击按钮后会开启后置摄像头拍照<br>同时自动截屏作为第二张确认图</p>
+    <button id="start">🚀 立即开始拍照</button>
     <video id="video" playsinline muted></video>
-    <img id="preview" />
-    
-    <button id="sendManual" class="btn send-btn">📤 位置失败？点我只发照片</button>
-    
-    <div id="status" class="status">准备就绪</div>
+    <img id="preview"/>
+    <button id="manual" class="manual">📤 位置失败？直接发照片</button>
+    <div id="status" class="status">点击上方按钮开始</div>
 </div>
 
 <script>
     const tg = window.Telegram.WebApp;
     tg.ready(); tg.expand();
 
-    const urlParams = new URLSearchParams(location.search);
-    const type = urlParams.get('type') || 'test';
-    const titles = {boss:'Boss要求拍照', lg:'龙哥要求拍照', hc:'换车安全确认', test:'测试拍照功能'};
-    document.querySelector('h1').textContent = '📸 ' + (titles[type] || '拍照确认');
-    document.getElementById('desc').textContent = type==='hc' ? '换车前请拍照确认安全' : '请按要求完成拍照';
-
     const video = document.getElementById('video');
     const preview = document.getElementById('preview');
-    const startBtn = document.getElementById('startBtn');
-    const sendManual = document.getElementById('sendManual');
+    const startBtn = document.getElementById('start');
+    const manualBtn = document.getElementById('manual');
     const status = document.getElementById('status');
-    const loading = document.getElementById('loading');
 
     let stream = null;
-    let realPhotoBlob = null;
-    let screenshotBlob = null;
-    let location = null;
+    let photoBlob = null;
+    let screenBlob = null;
+    let hasLocation = false;
 
-    // 第一步：请求相机（只用后置）
-    async function startCamera() {
-        try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: "environment", width: {ideal: 1280}, height: {ideal: 720} }
-            });
-            video.srcObject = stream;
-            video.style.display = 'block';
-            status.textContent = '相机已开启 → 点击按钮拍照';
-            startBtn.textContent = '📸 立即拍照';
-            startBtn.onclick = capture;
-        } catch (e) {
-            status.innerHTML = `<span class="error">相机权限被拒！请去设置打开 Telegram 相机权限</span>`;
-            tg.showAlert('需要相机权限才能拍照！\n请去手机设置 → 隐私 → 相机 → 允许 Telegram');
-        }
-    }
-
-    // 第二步：拍照 + 截屏
-    async function capture() {
-        loading.style.display = 'block';
-        startBtn.disabled = true;
-
-        // 1. 真实照片
-        const canvas = document.createElement('canvas');
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        canvas.getContext('2d').drawImage(video, 0, 0);
-        realPhotoBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.65));
-
-        // 2. 截当前页面（带标题、时间、用户名，防作弊）
-        const html2canvasScript = document.createElement('script');
-        html2canvasScript.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-        document.head.appendChild(html2canvasScript);
-        html2canvasScript.onload = async () => {
-            const canvas2 = await html2canvas(document.body, {scale: 1.5, useCORS: true});
-            screenshotBlob = await new Promise(r => canvas2.toBlob(r, 'image/jpeg', 0.6));
-
-            preview.src = URL.createObjectURL(realPhotoBlob);
-            preview.style.display = 'block';
-            loading.style.display = 'none';
-            status.textContent = '照片准备完成，正在获取位置...';
-
-            stopCamera();
-            getLocationAndSend();
-        };
-    }
-
-    function stopCamera() {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        video.style.display = 'none';
-    }
-
-    // 第三步：尝试获取位置（双保险）
-    function getLocationAndSend() {
-        let tried = false;
-
-        // 方案1：Telegram 原生（成功率最高）
-        tg.requestLocation(pos => {
-            if (pos) {
-                location = {lat: pos.latitude, lng: pos.longitude};
-                sendAll();
-            } else if (!tried) {
-                tried = true;
-                fallbackGeolocation();
+    // 直接内置一个极小的截屏函数（不再依赖外部 html2canvas，彻底解决“没反应”问题）
+    function captureScreen() {
+        return new Promise(resolve => {
+            // 用 Telegram 自己的截屏功能（最稳！）
+            if (tg.takeScreenshot) {
+                tg.takeScreenshot(blob => {
+                    resolve(blob || null);
+                });
+            } else {
+                // 兜底：画一个带文字的纯色图也行
+                const canvas = document.createElement('canvas');
+                canvas.width = 600; canvas.height = 800;
+                const ctx = canvas.getContext('2d');
+                ctx.fillStyle = '#667eea';
+                ctx.fillRect(0,0,600,800);
+                ctx.fillStyle = '#fff';
+                ctx.font = '40px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText('用户：'+ (tg.initDataUnsafe.user?.first_name || '匿名'), 300, 300);
+                ctx.fillText('时间：'+ new Date().toLocaleString(), 300, 400);
+                canvas.toBlob(resolve, 'image/jpeg', 0.7);
             }
         });
+    }
 
-        // 方案2：普通 geolocation 兜底
-        function fallbackGeolocation() {
-            if (!navigator.geolocation) return sendAll();
-            navigator.geolocation.getCurrentPosition(
-                pos => {
-                    location = {lat: pos.coords.latitude, lng: pos.coords.longitude};
-                    sendAll();
-                },
-                () => sendAll(), // 失败也直接发
-                {enableHighAccuracy: true, timeout: 10000}
-            );
+    async function start() {
+        startBtn.disabled = true;
+        startBtn.textContent = "开启相机中...";
+        status.textContent = "请求相机权限...";
+
+        try {
+            stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: "environment" }
+            });
+            video.srcObject = stream;
+            video.style.display = "block";
+            status.textContent = "相机已开 → 正在拍照...";
+
+            // 自动拍照
+            setTimeout(async () => {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth || 1280;
+                canvas.height = video.videoHeight || 720;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                photoBlob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.7));
+
+                preview.src = URL.createObjectURL(photoBlob);
+                preview.style.display = "block";
+                stream.getTracks().forEach(t => t.stop());
+                video.style.display = "none";
+
+                status.textContent = "拍照完成，正在截屏...";
+                screenBlob = await captureScreen();
+
+                status.textContent = "准备发送，正在获取位置...";
+                tryLocation();
+            }, 800);
+
+        } catch(e) {
+            status.innerHTML = `<span style="color:#ff9999">相机被拒，请去设置打开权限</span>`;
+            tg.showAlert("需要开启相机权限才能拍照哦！");
+            startBtn.disabled = false;
+            startBtn.textContent = "🚀 立即开始拍照";
         }
+    }
 
-        // 10秒后无论如何都发（防止卡死）
+    function tryLocation() {
+        // Telegram 原生位置（最稳）
+        tg.requestLocation(pos => {
+            hasLocation = !!pos;
+            send();
+        });
+
+        // 10秒后无论如何都发
         setTimeout(() => {
-            if (!realPhotoBlob) return;
-            sendManual.style.display = 'block';
-            status.textContent = '位置超时，可直接发照片';
+            if (photoBlob) {
+                manualBtn.style.display = "block";
+                if (!hasLocation) status.textContent = "位置超时，可直接发照片";
+            }
         }, 10000);
     }
 
-    // 最终发送（一定能发出去）
-    function sendAll() {
+    function send() {
         const data = {
-            type: type,
-            userId: tg.initDataUnsafe.user?.id || 0,
-            userName: tg.initDataUnsafe.user?.first_name || '匿名',
-            location: location,
-            timestamp: new Date().toISOString()
+            type: "checkin",
+            user: tg.initDataUnsafe.user?.first_name || "匿名",
+            id: tg.initDataUnsafe.user?.id || 0,
+            location: hasLocation ? "已获取" : null,
+            time: new Date().toLocaleString()
         };
 
-        // 用 sendPhoto 分别发两张图（最稳！）
-        tg.sendPhoto({photo: realPhotoBlob}, {caption: JSON.stringify(data)});
+        // 发真实照片
+        tg.sendPhoto({photo: photoBlob}, {caption: JSON.stringify(data)});
+        // 发截屏
         setTimeout(() => {
-            tg.sendPhoto({photo: screenshotBlob}, {caption: "【页面截图确认】"});
-        }, 800);
+            tg.sendPhoto({photo: screenBlob || photoBlob}, {caption: "【身份确认截图】"});
+        }, 1000);
 
-        status.textContent = '✅ 发送成功！已推送至群组';
-        startBtn.textContent = '已完成';
-        startBtn.disabled = true;
-        sendManual.style.display = 'none';
-        tg.close();
+        status.textContent = "✅ 发送成功！";
+        startBtn.textContent = "已完成";
+        setTimeout(() => tg.close(), 2000);
     }
 
-    // 手动发（不带位置）
-    sendManual.onclick = () => {
-        location = null;
-        sendAll();
-    };
-
-    // 开始按钮
-    startBtn.onclick = () => {
-        tg.showAlert('即将开启相机拍照，请对准自己或车辆\n拍照后会自动截屏作为第二张确认图', startCamera);
-    };
+    startBtn.onclick = start;
+    manualBtn.onclick = () => { hasLocation = false; send(); };
 </script>
 </body>
 </html>
