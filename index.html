@@ -1,150 +1,422 @@
-const { Telegraf } = require('telegraf');
-const express = require('express');
-
-// 初始化
-const bot = new Telegraf(process.env.BOT_TOKEN);
-const app = express();
-
-// 群组配置
-const GROUP_CHAT_IDS = [
-  -1003354803364, -1003381368112, -1003308598858, -1003368574609, 
-  -1003286063197, -1003378109615, -1003293673373, -1003203365614,
-  -1000000000009, -1000000000010
-];
-const BACKUP_GROUP_ID = -1003293673373;
-
-// 中间件
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
-
-// CORS
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>汇盈国际 - 安全拍照打卡</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<style>
+  body { 
+    margin:0; 
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif; 
+    background:#000; 
+    color:#fff; 
+    overflow:hidden; 
+    -webkit-tap-highlight-color: transparent;
   }
-  next();
-});
+  #container { 
+    position:relative; 
+    width:100vw; 
+    height:100vh; 
+    background: #000;
+  }
+  video { 
+    width:100%; 
+    height:100%; 
+    object-fit:cover; 
+  }
+  #overlay { 
+    position:absolute; 
+    top:20px; 
+    left:20px; 
+    right:20px;
+    background:rgba(0,0,0,0.7); 
+    padding:15px; 
+    border-radius:12px; 
+    font-size:16px; 
+    line-height:1.4; 
+    pointer-events:none; 
+  }
+  #controls { 
+    position:absolute; 
+    bottom:30px; 
+    left:50%; 
+    transform:translateX(-50%); 
+    z-index:10; 
+  }
+  button#capture {
+    background:#fff; 
+    border:none; 
+    width:70px; 
+    height:70px; 
+    border-radius:50%; 
+    font-size:28px; 
+    cursor:pointer;
+    box-shadow:0 4px 20px rgba(0,0,0,0.4); 
+  }
+  button#capture:disabled { 
+    opacity:0.5; 
+    cursor:not-allowed; 
+  }
 
-// 发送消息到群组
-async function sendToChat(chatId, photoBuffer, caption, lat, lng) {
+  #loadingOverlay {
+    position:absolute; 
+    top:0; 
+    left:0; 
+    width:100%; 
+    height:100%; 
+    background:rgba(0,0,0,0.85);
+    display:flex; 
+    flex-direction:column; 
+    align-items:center; 
+    justify-content:center; 
+    z-index:100;
+    opacity:0; 
+    pointer-events:none; 
+    transition:opacity 0.3s;
+  }
+  #loadingOverlay.show { 
+    opacity:1; 
+    pointer-events:all; 
+  }
+  .spinner {
+    width:50px; 
+    height:50px; 
+    border:4px solid #333; 
+    border-top:4px solid #4CAF50; 
+    border-radius:50%;
+    animation:spin 1s linear infinite; 
+    margin-bottom:20px;
+  }
+  @keyframes spin { 
+    to { transform:rotate(360deg); } 
+  }
+
+  #status { 
+    position:absolute; 
+    top:50%; 
+    left:0; 
+    right:0; 
+    text-align:center; 
+    color:#4CAF50; 
+    font-size:16px; 
+    padding:0 20px; 
+    z-index:10;
+    transform: translateY(-50%);
+    background: rgba(0,0,0,0.7);
+    padding: 15px;
+    margin: 20px;
+    border-radius: 10px;
+  }
+
+  .error-message {
+    position: absolute;
+    bottom: 180px;
+    left: 20px;
+    right: 20px;
+    background: rgba(244,67,54,0.9);
+    color: #fff;
+    padding: 12px;
+    border-radius: 10px;
+    font-size: 14px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div id="container">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+
+  <div id="overlay">
+    <div id="time">获取时间中...</div>
+    <div id="location">准备获取位置信息...</div>
+  </div>
+
+  <div id="status">准备启动摄像头...</div>
+
+  <div id="controls">
+    <button id="capture">📸</button>
+  </div>
+
+  <div id="errorMessage" class="error-message" style="display:none;"></div>
+
+  <div id="loadingOverlay">
+    <div class="spinner"></div>
+    <div style="font-size:16px; text-align:center;">正在上传照片<br><small>请勿关闭页面</small></div>
+  </div>
+</div>
+
+<script>
+// 配置
+const BACKEND_URL = "https://huiying888.onrender.com/upload";
+const urlParams = new URLSearchParams(location.search);
+const TARGET_CHAT_ID = urlParams.get('chatid');
+
+let stream = null;
+let locationData = null;
+let isUploading = false;
+
+// 显示错误信息
+function showError(message) {
+  const errorEl = document.getElementById('errorMessage');
+  errorEl.textContent = message;
+  errorEl.style.display = 'block';
+  setTimeout(() => {
+    errorEl.style.display = 'none';
+  }, 5000);
+}
+
+// 实时时间
+function updateTime() {
+  const now = new Date();
+  document.getElementById('time').textContent = "🕐 " + now.toLocaleString('zh-CN', {hour12:false});
+}
+setInterval(updateTime, 1000);
+updateTime();
+
+// 显示/隐藏 loading
+function showLoading(show) {
+  document.getElementById('loadingOverlay').classList.toggle('show', show);
+}
+
+// 初始化摄像头
+async function initCamera() {
   try {
-    await bot.telegram.sendPhoto(chatId, { source: photoBuffer }, {
-      caption,
-      parse_mode: 'Markdown'
-    });
-    
-    if (lat && lng) {
-      await bot.telegram.sendLocation(chatId, parseFloat(lat), parseFloat(lng));
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
     }
     
-    console.log(`✅ 成功发送到群组 ${chatId}`);
+    document.getElementById('status').textContent = "启动后置摄像头中...";
+    
+    // 先尝试后置摄像头
+    let constraints = {
+      video: {
+        facingMode: { exact: "environment" },
+        width: { ideal: 1920 },
+        height: { ideal: 1080 }
+      },
+      audio: false
+    };
+    
+    try {
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (exactError) {
+      console.log('精确后置摄像头失败，尝试普通模式');
+      constraints = {
+        video: {
+          facingMode: "environment",
+          width: { ideal: 1920 },
+          height: { ideal: 1080 }
+        },
+        audio: false
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+    }
+    
+    document.getElementById('video').srcObject = stream;
+    document.getElementById('status').textContent = "✅ 摄像头就绪，点击拍照开始打卡";
     return true;
   } catch (error) {
-    console.error(`发送到群组 ${chatId} 失败:`, error.message);
+    console.error('摄像头启动失败:', error);
+    document.getElementById('status').textContent = "❌ 摄像头启动失败，请检查权限";
+    showError("无法访问摄像头，请允许摄像头权限后刷新页面");
     return false;
   }
 }
 
-// ==================== 上传接口 ====================
-app.post('/upload', express.raw({type: '*/*', limit: '50mb'}), async (req, res) => {
-  console.log('📸 收到上传请求');
+// 获取位置信息
+function getLocation() {
+  return new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      resolve(null);
+      return;
+    }
+    
+    const options = {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 0
+    };
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = position.coords.latitude.toFixed(6);
+        const lng = position.coords.longitude.toFixed(6);
+        const acc = Math.round(position.coords.accuracy);
+        
+        document.getElementById('location').innerHTML = 
+          `📍 ${lat}, ${lng}<br>精度: ${acc}米`;
+        
+        if (acc > 50) {
+          document.getElementById('location').innerHTML += 
+            '<br><span style="color:#ff9800">⚠️ 定位精度较低</span>';
+        }
+        
+        resolve({ lat, lng, acc });
+      },
+      (err) => {
+        console.warn('定位获取失败:', err);
+        document.getElementById('location').textContent = "❌ 定位获取失败";
+        resolve(null);
+      },
+      options
+    );
+  });
+}
+
+// 测试后端连接
+async function testBackend() {
+  try {
+    const response = await fetch('https://huiying888.onrender.com/test');
+    const data = await response.json();
+    return data.code === 0;
+  } catch (error) {
+    console.error('后端连接测试失败:', error);
+    return false;
+  }
+}
+
+// 上传照片 - 使用更简单的方法
+async function uploadPhoto(imageDataUrl, location) {
+  // 将DataURL转换为Blob
+  const response = await fetch(imageDataUrl);
+  const blob = await response.blob();
+  
+  // 创建FormData
+  const formData = new FormData();
+  formData.append('photo', blob, 'photo.jpg');
+  
+  // 创建URL参数
+  const params = new URLSearchParams();
+  if (location) {
+    params.append('lat', location.lat);
+    params.append('lng', location.lng);
+    params.append('acc', location.acc);
+  }
+  params.append('name', '汇盈用户');
+  params.append('time', Date.now().toString());
+  if (TARGET_CHAT_ID) {
+    params.append('chatid', TARGET_CHAT_ID);
+  }
+  
+  const url = `${BACKEND_URL}?${params.toString()}`;
   
   try {
-    // 获取图片数据
-    const imageBuffer = req.body;
-    
-    if (!imageBuffer || imageBuffer.length < 100) {
-      console.log('❌ 无效的图片数据');
-      return res.status(400).json({ code: 1, msg: '无效的图片数据' });
-    }
-
-    // 获取参数
-    const { lat, lng, name = '汇盈用户', time, chatid } = req.query;
-    
-    console.log('📋 上传参数:', { 
-      lat, lng, name, time, chatid, 
-      bufferSize: imageBuffer.length 
+    const response = await fetch(url, {
+      method: 'POST',
+      body: formData
     });
-
-    if (!lat || !lng) {
-      console.log('❌ 缺少经纬度参数');
-      return res.status(400).json({ code: 1, msg: '缺少经纬度' });
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
     }
+    
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('上传错误:', error);
+    throw new Error(`网络请求失败: ${error.message}`);
+  }
+}
 
-    const formattedTime = time 
-      ? new Date(parseInt(time)).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
-      : new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' });
-
-    const caption = `【H5拍照上传】\n用户：${name}\n时间：${formattedTime}\n位置：${parseFloat(lat).toFixed(6)}, ${parseFloat(lng).toFixed(6)}\n高德地图：https://amap.com/dir?destination=${lng},${lat}\n谷歌地图：https://www.google.com/maps?q=${lat},${lng}`;
-
-    console.log(`📤 准备发送照片，chatid: ${chatid}`);
-
-    let success = false;
-
-    // 发送到指定群组
-    if (chatid && GROUP_CHAT_IDS.includes(Number(chatid))) {
-      console.log(`📤 发送到来源群组: ${chatid}`);
-      const sent = await sendToChat(Number(chatid), imageBuffer, caption, lat, lng);
-      if (sent) success = true;
+// 拍照主逻辑
+document.getElementById('capture').addEventListener('click', async () => {
+  if (isUploading) return;
+  
+  isUploading = true;
+  const btn = document.getElementById('capture');
+  btn.disabled = true;
+  showLoading(true);
+  
+  try {
+    // 第一步：测试后端连接
+    document.getElementById('status').textContent = "检查服务器连接...";
+    const backendOk = await testBackend();
+    if (!backendOk) {
+      throw new Error("无法连接到服务器，请检查网络连接");
     }
+    
+    // 第二步：获取位置
+    document.getElementById('status').textContent = "获取位置信息中...";
+    locationData = await getLocation();
+    
+    // 第三步：拍摄照片
+    document.getElementById('status').textContent = "拍摄照片中...";
+    
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // 发送到备份群组
-    console.log(`📤 发送到备份群组: ${BACKUP_GROUP_ID}`);
-    const backupSent = await sendToChat(BACKUP_GROUP_ID, imageBuffer, `[备份] ${caption}`, lat, lng);
-    if (backupSent) success = true;
+    // 添加水印
+    const now = new Date().toLocaleString('zh-CN', {hour12:false});
+    const locationText = locationData 
+      ? `经纬度：${locationData.lat},${locationData.lng} 精度:${locationData.acc}m`
+      : '位置信息获取失败';
+    
+    const text = `${now}\n${locationText}`;
+    
+    ctx.font = 'bold 32px Arial';
+    ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+    ctx.lineWidth = 6;
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.textBaseline = 'bottom';
+    ctx.textAlign = 'left';
 
-    if (success) {
-      console.log('✅ 照片上传和处理完成');
-      res.json({ code: 0, msg: 'success' });
+    const x = 30;
+    const y = canvas.height - 30;
+    ctx.strokeText(text, x, y);
+    ctx.fillText(text, x, y);
+
+    // 转换为DataURL
+    document.getElementById('status').textContent = "准备上传照片...";
+    const imageDataUrl = canvas.toDataURL('image/jpeg', 0.9);
+    
+    // 第四步：上传照片
+    document.getElementById('status').textContent = "上传照片中...";
+    
+    const result = await uploadPhoto(imageDataUrl, locationData);
+    
+    if (result && result.code === 0) {
+      document.getElementById('status').innerHTML = "✅ 打卡成功！<br>3秒后自动关闭";
+      // 尝试关闭Telegram WebApp
+      if (window.Telegram && Telegram.WebApp && Telegram.WebApp.close) {
+        setTimeout(() => Telegram.WebApp.close(), 3000);
+      }
     } else {
-      throw new Error('所有群组发送失败');
+      throw new Error(result?.msg || '服务器返回错误');
     }
-
-  } catch (err) {
-    console.error('❌ H5上传失败:', err);
-    res.status(500).json({ code: 1, msg: err.message });
+    
+  } catch (error) {
+    console.error('打卡失败:', error);
+    document.getElementById('status').textContent = "❌ 打卡失败";
+    
+    let errorMsg = error.message;
+    if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+      errorMsg = "网络连接失败，请检查:\n1. 网络连接是否正常\n2. 后端服务是否运行";
+    }
+    
+    showError(errorMsg);
+    
+    // 重新启用按钮
+    btn.disabled = false;
+    isUploading = false;
+    showLoading(false);
   }
 });
 
-// 健康检查
-app.get('/', (req, res) => {
-  res.json({ 
-    status: 'online', 
-    message: '汇盈国际 Bot 服务运行正常 🚀',
-    timestamp: new Date().toISOString(),
-    endpoint: '/upload (POST)'
+// 页面加载完成后初始化
+window.addEventListener('load', async () => {
+  // 初始化摄像头
+  await initCamera();
+  
+  // 预获取位置
+  getLocation().then(location => {
+    locationData = location;
   });
 });
-
-app.get('/test', (req, res) => {
-  res.json({ 
-    code: 0, 
-    message: '后端服务正常运行',
-    timestamp: new Date().toISOString()
-  });
-});
-
-// 启动服务器
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`🌐 Express 服务器启动成功，端口: ${PORT}`);
-  console.log(`📍 健康检查: https://huiying888.onrender.com/`);
-  console.log(`🧪 测试端点: https://huiying888.onrender.com/test`);
-});
-
-// 延迟启动Bot避免冲突
-setTimeout(() => {
-  bot.launch().then(() => {
-    console.log('🚀 Bot 启动成功！');
-  }).catch(err => {
-    console.error('❌ Bot 启动失败:', err.message);
-    console.log('⚠️ Bot 功能不可用，但上传接口正常');
-  });
-}, 5000);
-
-// 优雅关闭
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+</script>
+</body>
+</html>
