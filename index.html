@@ -159,12 +159,14 @@
             captureBtn.style.display = 'none';
         }
 
-        // ==================== 新版位置获取（2025年最稳）====================
+        // ==================== 2025.11.19 最终无敌版位置获取 ====================
         function getLocationWithRetry() {
             if (locationFetching) return;
             locationFetching = true;
             sendBtn.style.display = 'none';
-            tg.MainButton.hide();
+
+            // 彻底清理旧监听，防止残留导致 tg.sendData 被阻塞
+            try { tg.MainButton.offClick(); } catch(e) {}
 
             status.innerHTML = `
                 <div style="margin:25px 0; padding:18px; background:rgba(255,255,255,0.1); border-radius:16px; border-left:4px solid #4facfe; line-height:1.8;">
@@ -180,9 +182,10 @@
             tg.MainButton.textColor = "#ffffff";
 
             const mainButtonHandler = () => {
+                tg.MainButton.offClick(mainButtonHandler);  // 立即解绑
+                tg.MainButton.hide();
+
                 tg.requestLocation((err, loc) => {
-                    tg.MainButton.offClick(mainButtonHandler);
-                    tg.MainButton.hide();
                     if (!err && loc) {
                         currentLocation = { 
                             lat: loc.latitude, 
@@ -202,7 +205,7 @@
 
             tg.MainButton.onClick(mainButtonHandler);
 
-            // 10秒超时放通
+            // 10秒超时强制放通
             forceSendTimer = setTimeout(() => {
                 if (locationFetching) {
                     tg.MainButton.offClick(mainButtonHandler);
@@ -220,7 +223,6 @@
             canvas.height = videoPreview.videoHeight || 720;
             const ctx = canvas.getContext('2d');
 
-            // 前置镜像
             if (currentCamera === 'front') {
                 ctx.translate(canvas.width, 0);
                 ctx.scale(-1, 1);
@@ -251,7 +253,6 @@
                 ctx.fillText(line, 20, 20 + i * 55);
             });
 
-            // 右下角再印一次（防P图）
             ctx.globalAlpha = 0.6;
             lines.forEach((line, i) => {
                 const y = canvas.height - 180 + i * 55;
@@ -287,8 +288,10 @@
             }, 100);
         }
 
+        // 彻底杜绝 MainButton 残留监听导致 sendData 被阻塞
         function manualSend() {
             clearTimeout(forceSendTimer);
+            try { tg.MainButton.offClick(); } catch(e) {}
             tg.MainButton.hide();
             currentLocation = null;
             sendData();
@@ -297,6 +300,7 @@
         function sendData() {
             if (photos.length < 2) return;
             clearTimeout(forceSendTimer);
+            try { tg.MainButton.offClick(); } catch(e) {}
             tg.MainButton.hide();
             loading.style.display = 'block';
             animateProgress();
