@@ -1,864 +1,225 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>拍照确认</title>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-        body {
-            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #0c2461 0%, #1e3799 25%, #4a69bd 50%, #6a89cc 100%);
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            color: #fff;
-            overflow-x: hidden;
-            position: relative;
-        }
-        body::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background:
-                radial-gradient(circle at 20% 80%, rgba(120, 119, 198, 0.3) 0%, transparent 50%),
-                radial-gradient(circle at 80% 20%, rgba(255, 119, 198, 0.2) 0%, transparent 50%),
-                radial-gradient(circle at 40% 40%, rgba(120, 219, 255, 0.2) 0%, transparent 50%);
-            z-index: -1;
-        }
-        .container {
-            background: rgba(255, 255, 255, 0.08);
-            backdrop-filter: blur(25px);
-            border-radius: 28px;
-            padding: 45px 35px;
-            text-align: center;
-            box-shadow:
-                0 20px 60px rgba(0, 0, 0, 0.25),
-                inset 0 1px 0 rgba(255, 255, 255, 0.15);
-            max-width: 440px;
-            width: 100%;
-            transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            animation: fadeInUp 0.7s ease-out;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            position: relative;
-            overflow: hidden;
-        }
-        .container::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 1px;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
-        }
-        @keyframes fadeInUp {
-            from {
-                opacity: 0;
-                transform: translateY(30px) scale(0.95);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0) scale(1);
-            }
-        }
-        h1 {
-            font-size: 36px;
-            margin-bottom: 16px;
-            background: linear-gradient(135deg, #ffffff 0%, #e6e9ff 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            font-weight: 700;
-            letter-spacing: -0.5px;
-            text-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            position: relative;
-            display: inline-block;
-        }
-        h1::after {
-            content: '';
-            position: absolute;
-            bottom: -8px;
-            left: 25%;
-            width: 50%;
-            height: 3px;
-            background: linear-gradient(90deg, transparent, #4facfe, transparent);
-            border-radius: 3px;
-        }
-        p {
-            font-size: 17px;
-            opacity: 0.9;
-            margin-bottom: 35px;
-            line-height: 1.6;
-            font-weight: 400;
-            color: rgba(255, 255, 255, 0.85);
-        }
-        .browser-warning {
-            display: none;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 20px;
-            padding: 25px;
-            margin-bottom: 30px;
-            text-align: left;
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
-        }
-        .browser-warning h3 {
-            color: #ffcc00;
-            margin-bottom: 15px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .browser-warning p {
-            margin-bottom: 15px;
-            font-size: 15px;
-        }
-        .browser-warning ul {
-            margin-left: 20px;
-            margin-bottom: 20px;
-        }
-        .browser-warning li {
-            margin-bottom: 8px;
-            font-size: 14px;
-        }
-        .open-browser-btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border: none;
-            color: white;
-            padding: 14px 20px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            font-size: 16px;
-            font-weight: 600;
-            width: 100%;
-            margin-top: 15px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.4);
-        }
-        .open-browser-btn:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 12px 30px rgba(79, 172, 254, 0.5);
-        }
-        .camera-choice {
-            display: flex;
-            gap: 12px;
-            margin-bottom: 30px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 20px;
-            padding: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        .camera-btn {
-            background: transparent;
-            border: none;
-            color: rgba(255, 255, 255, 0.7);
-            padding: 14px 20px;
-            border-radius: 16px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            flex: 1;
-            font-size: 16px;
-            font-weight: 500;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            position: relative;
-            overflow: hidden;
-        }
-        .camera-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
-            transition: left 0.5s;
-        }
-        .camera-btn:hover::before {
-            left: 100%;
-        }
-        .camera-btn:hover {
-            color: white;
-            transform: translateY(-2px);
-        }
-        .camera-btn.active {
-            background: rgba(255, 255, 255, 0.15);
-            color: white;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
-            transform: translateY(-2px);
-        }
-        .btn {
-            background: linear-gradient(135deg, #ff6b6b 0%, #ff8e8e 100%);
-            border: none;
-            color: white;
-            padding: 18px 30px;
-            font-size: 18px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow:
-                0 8px 25px rgba(255, 107, 107, 0.4),
-                0 2px 5px rgba(255, 107, 107, 0.2);
-            width: 100%;
-            margin-bottom: 25px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            position: relative;
-            overflow: hidden;
-        }
-        .btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s;
-        }
-        .btn:hover::before {
-            left: 100%;
-        }
-        .btn:hover {
-            transform: translateY(-3px);
-            box-shadow:
-                0 12px 30px rgba(255, 107, 107, 0.5),
-                0 4px 8px rgba(255, 107, 107, 0.3);
-        }
-        .btn:active {
-            transform: translateY(-1px);
-        }
-        .btn:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
-        }
-        .send-btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border: none;
-            color: white;
-            padding: 16px 28px;
-            font-size: 17px;
-            border-radius: 50px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow:
-                0 8px 25px rgba(79, 172, 254, 0.4),
-                0 2px 5px rgba(79, 172, 254, 0.2);
-            width: 100%;
-            margin-top: 15px;
-            font-weight: 600;
-            letter-spacing: 0.5px;
-            position: relative;
-            overflow: hidden;
-            display: none;
-        }
-        .send-btn::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
-            transition: left 0.5s;
-        }
-        .send-btn:hover::before {
-            left: 100%;
-        }
-        .send-btn:hover {
-            transform: translateY(-3px);
-            box-shadow:
-                0 12px 30px rgba(79, 172, 254, 0.5),
-                0 4px 8px rgba(79, 172, 254, 0.3);
-        }
-        .send-btn:active {
-            transform: translateY(-1px);
-        }
-        .retry-btn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border: none;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-            font-size: 16px;
-            display: none;
-            width: 100%;
-        }
-        .retry-btn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
-        }
-        .status {
-            font-size: 15px;
-            opacity: 0.9;
-            margin-top: 15px;
-            min-height: 22px;
-            transition: all 0.3s ease;
-            font-weight: 500;
-            padding: 12px 15px;
-            border-radius: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-        }
-        #videoPreview, #photoPreview {
-            width: 100%;
-            height: 220px;
-            object-fit: cover;
-            border-radius: 18px;
-            margin-top: 25px;
-            display: none;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            animation: zoomIn 0.5s ease;
-        }
-        #captureBtn {
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            border: none;
-            color: white;
-            padding: 12px 24px;
-            border-radius: 25px;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            margin-top: 10px;
-            font-size: 16px;
-            display: none;
-        }
-        #captureBtn:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 15px rgba(79, 172, 254, 0.4);
-        }
-        @keyframes zoomIn {
-            from {
-                opacity: 0;
-                transform: scale(0.9);
-            }
-            to {
-                opacity: 1;
-                transform: scale(1);
-            }
-        }
-        .loading {
-            display: none;
-            margin: 25px 0;
-        }
-        .spinner {
-            border: 3px solid rgba(255, 255, 255, 0.2);
-            border-top: 3px solid #fff;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin: 0 auto 15px;
-            box-shadow: 0 0 20px rgba(255, 255, 255, 0.2);
-        }
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-        .error {
-            color: #ffcccc;
-            background: rgba(255, 102, 102, 0.15);
-            padding: 12px 15px;
-            border-radius: 12px;
-            margin: 12px 0;
-            border: 1px solid rgba(255, 102, 102, 0.3);
-            font-weight: 500;
-        }
-        .confirm-text {
-            background: rgba(255, 255, 255, 0.12);
-            padding: 18px;
-            border-radius: 16px;
-            margin: 25px 0;
-            font-style: italic;
-            border-left: 4px solid #4facfe;
-            text-align: left;
-            font-size: 16px;
-            line-height: 1.5;
-            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
-            position: relative;
-        }
-        .confirm-text::before {
-            content: '"';
-            font-size: 60px;
-            position: absolute;
-            left: 10px;
-            top: -10px;
-            opacity: 0.3;
-            color: #4facfe;
-            font-family: serif;
-        }
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 3px;
-            overflow: hidden;
-            margin-top: 15px;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2);
-        }
-        .progress-fill {
-            height: 100%;
-            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-            width: 0%;
-            transition: width 0.4s ease;
-            border-radius: 3px;
-            position: relative;
-            overflow: hidden;
-        }
-        .progress-fill::after {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            bottom: 0;
-            right: 0;
-            background-image: linear-gradient(
-                -45deg,
-                rgba(255, 255, 255, 0.2) 25%,
-                transparent 25%,
-                transparent 50%,
-                rgba(255, 255, 255, 0.2) 50%,
-                rgba(255, 255, 255, 0.2) 75%,
-                transparent 75%,
-                transparent
-            );
-            background-size: 20px 20px;
-            animation: moveStripes 1s linear infinite;
-        }
-        @keyframes moveStripes {
-            0% { background-position: 0 0; }
-            100% { background-position: 20px 0; }
-        }
-        .photo-counter {
-            display: none;
-            margin-top: 15px;
-            font-size: 14px;
-            background: rgba(255, 255, 255, 0.1);
-            padding: 8px 15px;
-            border-radius: 20px;
-            font-weight: 500;
-        }
-        .pulse {
-            animation: pulse 2s infinite;
-        }
-        @keyframes pulse {
-            0% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.7); }
-            70% { box-shadow: 0 0 0 15px rgba(255, 107, 107, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0); }
-        }
-        .floating {
-            animation: floating 3s ease-in-out infinite;
-        }
-        @keyframes floating {
-            0% { transform: translateY(0px); }
-            50% { transform: translateY(-10px); }
-            100% { transform: translateY(0px); }
-        }
-    </style>
+<meta charset="UTF-8">
+<title>汇盈国际 - 安全拍照打卡</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  body { margin:0; font-family: Arial; background:#000; color:#fff; }
+  #container { position:relative; width:100vw; height:100vh; }
+  video { width:100%; height:100%; object-fit:cover; }
+  #overlay {
+    position: absolute;
+    bottom: 20px;
+    left: 20px;
+    background: rgba(0,0,0,0.6);
+    padding: 10px 15px;
+    border-radius: 8px;
+    font-size: 16px;
+    line-height: 1.4;
+    pointer-events: none;
+    max-width: 90%;
+  }
+  #controls {
+    position: absolute;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  button {
+    background:#fff;
+    border:none;
+    width:70px;
+    height:70px;
+    border-radius:50%;
+    font-size:40px;
+    cursor:pointer;
+    box-shadow:0 4px 20px rgba(0,0,0,0.5);
+  }
+  #status { position:absolute; top:20px; left:0; right:0; text-align:center; color:#0f0; font-size:14px; }
+</style>
 </head>
 <body>
-    <div class="container floating">
-        <h1 id="title">📸 拍照确认</h1>
-        <p id="description">请选择摄像头并确认精准位置</p>
-        
-        <!-- 新增：浏览器兼容性警告 -->
-        <div id="browserWarning" class="browser-warning">
-            <h3>⚠️ 浏览器兼容性提示</h3>
-            <p>检测到您正在使用Telegram内置浏览器，部分功能可能受限。</p>
-            <p><strong>推荐操作：</strong></p>
-            <ul>
-                <li>点击下方按钮在系统浏览器中打开此页面</li>
-                <li>或手动复制链接到手机自带浏览器中打开</li>
-            </ul>
-            <button id="openInBrowser" class="open-browser-btn">
-                🌐 在系统浏览器中打开
-            </button>
-        </div>
-        
-        <div id="confirmText" class="confirm-text" style="display:none;"></div>
-        <div class="camera-choice">
-            <button class="camera-btn active" onclick="selectCamera('back')" id="backBtn">📷 后置摄像头</button>
-            <button class="camera-btn" onclick="selectCamera('front')" id="frontBtn">🤳 前置摄像头</button>
-        </div>
-        <button id="signInBtn" class="btn pulse">开始拍照确认</button>
-        <div id="loading" class="loading">
-            <div class="spinner"></div>
-            <p>处理中... <div class="progress-bar"><div class="progress-fill"></div></div></p>
-        </div>
-        <div id="photoCounter" class="photo-counter">照片 1/2</div>
-        <video id="videoPreview" autoplay playsinline muted></video>
-        <img id="photoPreview" src="" alt="照片预览">
-        <button id="captureBtn" onclick="capturePhoto()">📸 拍照</button>
-        <button id="retryCameraBtn" class="retry-btn" onclick="retryCamera()">🔄 重试相机访问</button>
-        <button id="sendBtn" class="send-btn" onclick="manualSend()">📤 发送到群组（无位置）</button>
-        <div id="status" class="status">等待位置确认...</div>
-    </div>
-    <script>
-        const tg = window.Telegram.WebApp;
-        tg.ready();
-        tg.expand();
-        console.log('Telegram WebApp 初始化完成');
-        
-        // 检测是否在Telegram内置浏览器中
-        function isTelegramBrowser() {
-            return navigator.userAgent.includes('Telegram') || 
-                   typeof window.TelegramWebviewProxy !== 'undefined';
-        }
-        
-        // 显示浏览器兼容性警告
-        function showBrowserWarning() {
-            const browserWarning = document.getElementById('browserWarning');
-            browserWarning.style.display = 'block';
-            
-            // 添加一键跳转功能
-            document.getElementById('openInBrowser').addEventListener('click', function() {
-                const currentUrl = window.location.href;
-                // 尝试使用Telegram的openLink方法
-                if (tg && tg.openLink) {
-                    tg.openLink(currentUrl);
-                } else {
-                    // 备用方案：在新窗口打开
-                    window.open(currentUrl, '_blank');
-                }
-            });
-        }
-        
-        // 在页面加载时检测浏览器环境
-        window.addEventListener('load', function() {
-            if (isTelegramBrowser()) {
-                console.log('检测到Telegram内置浏览器，显示警告');
-                showBrowserWarning();
-            } else {
-                console.log('检测到系统浏览器，功能正常');
-            }
-        });
-        
-        // 从 URL 参数获取类型
-        const urlParams = new URLSearchParams(window.location.search);
-        const type = urlParams.get('type') || 'default'; // boss 或 lg 或 hc
-        // 动态设置标题和描述
-        const titles = {
-            boss: '📸 Boss 要求拍照',
-            lg: '📸 龙哥要求拍照',
-            hc: '🚗 换车安全确认'
-        };
-        const descriptions = {
-            boss: '汇盈国际负责人@Boss要求你拍照，请点击下方拍照',
-            lg: '汇盈国际负责人龍哥要求你拍照，请点击下方拍照',
-            hc: '为了保障你安全换车前请拍照！换车一定要是上一个司机安排的哦，如果是请点击下方拍照，如果不是请联系负责人'
-        };
-        const confirmTexts = {
-            boss: '✅ 确认：已按 Boss 要求拍照',
-            lg: '✅ 确认：已按龙哥要求拍照',
-            hc: '✅ 确认：本次换车由上一个司机安排'
-        };
-        document.getElementById('title').textContent = titles[type] || '📸 拍照确认';
-        document.getElementById('description').textContent = descriptions[type] || '请拍照并确认位置';
-        const confirmDiv = document.getElementById('confirmText');
-        confirmDiv.textContent = confirmTexts[type] || '';
-        confirmDiv.style.display = confirmTexts[type] ? 'block' : 'none';
-        const signInBtn = document.getElementById('signInBtn');
-        const loading = document.getElementById('loading');
-        const videoPreview = document.getElementById('videoPreview');
-        const photoPreview = document.getElementById('photoPreview');
-        const captureBtn = document.getElementById('captureBtn');
-        const retryCameraBtn = document.getElementById('retryCameraBtn');
-        const sendBtn = document.getElementById('sendBtn');
-        const status = document.getElementById('status');
-        const photoCounter = document.getElementById('photoCounter');
-        let currentLocation = null;
-        let currentCamera = 'back'; // 默认后置
-        let photos = []; // 存储双照片
-        let stream = null; // 相机流
-        let videoTrack = null; // 视频轨道
-        let locationRetries = 0; // 重试计数
-        const maxLocationRetries = 5; // 增加到5次，提高弹出次数
-        let cameraRetries = 0; // 相机重试计数
-        const maxCameraRetries = 2; // 相机最大重试次数
-        let locationFetching = false; // 位置获取标志，防赛跑
-        let locationFailed = false; // 新增：位置失败标志，控制手动发送按钮
 
-        // 摄像头选择
-        function selectCamera(cam) {
-            console.log('切换摄像头:', cam); // 调试
-            currentCamera = cam;
-            document.querySelectorAll('.camera-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(cam === 'back' ? 'backBtn' : 'frontBtn').classList.add('active');
-            retryCameraBtn.style.display = 'none'; // 切换时隐藏重试按钮
-            sendBtn.style.display = 'none'; // 隐藏发送按钮
-            stopCamera();
-            startCamera(); // 切换摄像头
-        }
+<div id="container">
+  <video id="video" autoplay playsinline></video>
+  <canvas id="canvas" style="display:none;"></canvas>
+  
+  <div id="overlay">
+    <div id="time">获取时间中...</div>
+    <div id="location">获取位置中...</div>
+  </div>
 
-        // 启动相机 (WebRTC getUserMedia)
-        async function startCamera() {
-            console.log('启动相机中...'); // 调试
-            try {
-                const constraints = {
-                    video: {
-                        facingMode: currentCamera === 'back' ? 'environment' : 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-                videoPreview.srcObject = stream;
-                videoPreview.style.display = 'block';
-                videoTrack = stream.getVideoTracks()[0];
-                captureBtn.style.display = 'block';
-                retryCameraBtn.style.display = 'none'; // 隐藏重试按钮
-                sendBtn.style.display = 'none'; // 隐藏发送按钮
-                status.textContent = '相机就绪，点击拍照 📸';
-                console.log('相机启动成功'); // 调试
-                cameraRetries = 0; // 重置重试
-            } catch (error) {
-                console.error('相机启动失败:', error); // 调试
-                cameraRetries++;
-                let errorMsg = '相机访问失败';
-                if (error.name === 'NotAllowedError') {
-                    errorMsg = '相机权限被拒绝';
-                    // 如果是在Telegram内置浏览器中，显示特殊提示
-                    if (isTelegramBrowser()) {
-                        errorMsg += ' - 请使用系统浏览器打开此页面';
-                    }
-                } else if (error.name === 'NotFoundError') {
-                    errorMsg = '未找到可用摄像头';
-                } else if (error.name === 'NotReadableError') {
-                    errorMsg = '摄像头被占用，请关闭其他应用';
-                } else {
-                    errorMsg += `: ${error.message}`;
-                }
-                status.innerHTML = `<span class="error">${errorMsg} – 请在系统设置中授权相机权限 🔒</span>`;
-                retryCameraBtn.style.display = 'block';
-                if (cameraRetries >= maxCameraRetries) {
-                    // 最终失败：弹出 Telegram 警告，引导用户
-                    tg.showAlert('相机权限未授权！请去系统设置 > 隐私 > 相机 > 允许 Telegram 访问，然后重试。否则无法拍照。');
-                } else {
-                    // 首次拒绝：弹出友好警告
-                    tg.showAlert('首次访问相机被拒绝？请确认授权！\n\n步骤：\n1. 点击"允许"或"好的"\n2. 如果已拒绝，去设置重启授权\n\n重试后将直接启动相机。');
-                }
-            }
-        }
+  <div id="controls">
+    <button id="capture">📸</button>
+  </div>
 
-        // 重试相机函数
-        function retryCamera() {
-            console.log('重试相机...'); // 调试
-            status.textContent = '重试相机访问中... ⏳';
-            retryCameraBtn.style.display = 'none';
-            setTimeout(() => startCamera(), 500); // 短暂延迟重试
-        }
+  <div id="status">正在启动摄像头和定位...</div>
+</div>
 
-        // 停止相机
-        function stopCamera() {
-            console.log('停止相机'); // 调试
-            if (stream) {
-                stream.getTracks().forEach(track => track.stop());
-                stream = null;
-            }
-            videoPreview.style.display = 'none';
-            captureBtn.style.display = 'none';
-        }
+<script>
+// ==================== 配置区 ====================
+// 1. 改成你的 Render 后端域名（例如 https://xxxx.onrender.com/upload）
+const BACKEND_URL = "https://huiying888.onrender.com/upload";
 
-        // 手动发送函数
-        function manualSend() {
-            console.log('手动发送数据...'); // 调试
-            sendBtn.style.display = 'none';
-            loading.style.display = 'block';
-            const progressFill = document.querySelector('.progress-fill');
-            let width = 0;
-            const interval = setInterval(() => {
-                width += 20;
-                progressFill.style.width = width + '%';
-                if (width >= 100) clearInterval(interval);
-            }, 150);
-            setTimeout(() => {
-                sendData();
-                loading.style.display = 'none';
-                // 发送后弹出提示
-                tg.showAlert('图片发送成功，位置未发送！');
-                // 更新状态文本
-                status.textContent = '图片发送成功，位置未发送！📤';
-            }, 1000);
-        }
+// 2. 自动读取群ID（从 /hc /boss /lg 按钮带过来的 ?chatid= 参数）
+const urlParams = new URLSearchParams(location.search);
+const TARGET_CHAT_ID = urlParams.get('chatid');
+// ===============================================
 
-        // 异步获取位置函数（使用原生 geolocation 作为主方式，提高成功率）
-        function getLocationWithRetry() {
-            if (locationFetching) return; // 防重复调用
-            locationFetching = true;
-            locationFailed = false; // 重置失败标志
-            sendBtn.style.display = 'none'; // 隐藏发送按钮
-            console.log('开始位置获取'); // 调试
-            const options = {
-                enableHighAccuracy: true, // 启用高精度 GPS，提高准确率
-                timeout: 15000, // 15秒超时，平衡速度和成功率
-                maximumAge: 60000 // 最多使用1分钟前的缓存位置，提高响应速度
-            };
+let track = null;
+window.currentLocation = null;
 
-            const tryGeolocation = (retryCount = 0) => {
-                console.log(`位置重试: ${retryCount + 1}/${maxLocationRetries}`); // 调试
-                status.textContent = `获取位置中... (尝试 ${retryCount + 1}/${maxLocationRetries}) ⏳ 建议室外开启GPS（室内信号弱可能稍慢）`;
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        console.log('位置获取成功:', position.coords); // 调试
-                        currentLocation = {
-                            lat: position.coords.latitude,
-                            lng: position.coords.longitude,
-                            accuracy: position.coords.accuracy || 0
-                        };
-                        let accText;
-                        if (currentLocation.accuracy > 100) {
-                            accText = `位置获取成功，但精度较低 (${currentLocation.accuracy.toFixed(0)}m)，建议室外重试 📍`;
-                        } else if (currentLocation.accuracy > 50) {
-                            accText = `位置获取成功 (精度: ${currentLocation.accuracy.toFixed(0)}m) 📍`;
-                        } else {
-                            accText = `位置精准获取成功 (精度: ${currentLocation.accuracy.toFixed(0)}m) ✅`;
-                        }
-                        status.textContent = accText;
-                        locationRetries = 0; // 重置重试
-                        locationFetching = false; // 结束 fetching
-                        // 位置成功：自动发送
-                        if (photos.length === 2) {
-                            sendData();
-                        }
-                    },
-                    (error) => {
-                        console.error('位置获取错误:', error); // 调试
-                        if (retryCount < maxLocationRetries - 1) {
-                            // 重试：短暂延迟后重试，提高成功率
-                            setTimeout(() => tryGeolocation(retryCount + 1), 2000);
-                        } else {
-                            // 最终失败：显示手动发送按钮
-                            console.log('位置最终失败，显示手动发送按钮'); // 调试
-                            status.innerHTML = `<span class="error">位置获取失败 (错误: ${error.message})，请点击下方按钮手动发送图片 ❌</span>`;
-                            currentLocation = null; // 或使用 {lat:0, lng:0, accuracy:999}
-                            locationRetries = 0;
-                            locationFetching = false; // 结束 fetching
-                            locationFailed = true; // 设置失败标志
-                            sendBtn.style.display = 'block'; // 显示发送按钮
-                        }
-                    },
-                    options
-                );
-            };
+// 实时时间
+function updateTime() {
+  const now = new Date();
+  const str = now.toLocaleString('zh-CN', {hour12:false});
+  document.getElementById('time').textContent = "🕖 " + str;
+}
+setInterval(updateTime, 1000);
+updateTime();
 
-            tryGeolocation(0);
-        }
+// 高精度定位
+function startLocation() {
+  if (!navigator.geolocation) {
+    document.getElementById('location').textContent = "❌ 浏览器不支持定位";
+    return;
+  }
+  const options = { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 };
+  track = navigator.geolocation.watchPosition(pos => {
+    const lat = pos.coords.latitude.toFixed(6);
+    const lng = pos.coords.longitude.toFixed(6);
+    const acc = pos.coords.accuracy.toFixed(0);
+    document.getElementById('location').innerHTML = `📍 ${lat}, ${lng}<br>精度 ≈ ${acc}m`;
+    window.currentLocation = {lat: parseFloat(lat), lng: parseFloat(lng), acc};
+  }, err => {
+    document.getElementById('location').textContent = "❌ 定位失败：" + err.message;
+  }, options);
+}
 
-        // 截图拍照
-        function capturePhoto() {
-            console.log('拍照中...'); // 调试
-            const canvas = document.createElement('canvas');
-            canvas.width = videoPreview.videoWidth;
-            canvas.height = videoPreview.videoHeight;
-            canvas.getContext('2d').drawImage(videoPreview, 0, 0);
-            const photoData = canvas.toDataURL('image/jpeg', 0.8); // JPEG 压缩
-            photos.push(photoData);
-            photoCounter.textContent = `照片 ${photos.length}/2`;
-            photoCounter.style.display = 'block';
-            photoPreview.src = photoData;
-            photoPreview.style.display = 'block';
-            if (photos.length === 1) {
-                status.textContent = '后置拍照完成！切换前置自拍确认 🤳';
-                selectCamera('front');
-            } else if (photos.length === 2) {
-                console.log('双拍照完成，开始补位置'); // 调试
-                status.textContent = '双拍照完成！获取位置中... 📤';
-                // 拍照后异步获取位置（后补），不阻塞
-                getLocationWithRetry();
-                loading.style.display = 'block';
-                const progressFill = document.querySelector('.progress-fill');
-                let width = 0;
-                const interval = setInterval(() => {
-                    width += 10;
-                    progressFill.style.width = width + '%';
-                    if (width >= 100) clearInterval(interval);
-                }, 200);
-                // 延迟检查：如果位置成功已自动发送；失败则按钮已显示
-                setTimeout(() => {
-                    if (photos.length < 2) return; // 安全校验
-                    loading.style.display = 'none'; // 隐藏加载
-                    if (locationFetching) {
-                        // 仍在获取，延长等待
-                        status.textContent = '位置获取中，请稍等... ⏳';
-                        setTimeout(arguments.callee, 2000); // 递归等待 2s
-                        return;
-                    }
-                    // 如果位置失败，按钮已显示；否则已发送
-                }, 3000); // 给重试更多时间
-            }
-        }
+// 启动后置摄像头
+async function startCamera() {
+  const video = document.getElementById('video');
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: {ideal: 4096}, height: {ideal: 4096} },
+      audio: false
+    });
+    video.srcObject = stream;
+    document.getElementById('status').textContent = "✅ 就绪，点击下方拍照按钮";
+  } catch(e) {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({video: true});
+      video.srcObject = stream;
+      document.getElementById('status').textContent = "⚠️ 使用前置摄像头";
+    } catch(err) {
+      document.getElementById('status').textContent = "❌ 无法打开摄像头";
+    }
+  }
+}
 
-        // 发送数据函数
-        function sendData() {
-            if (photos.length < 2) return; // 安全校验
-            console.log('发送数据中...'); // 调试
-            // 生成链接 (如果有位置)
-            let googleLink = '';
-            let gaodeLink = '';
-            if (currentLocation && currentLocation.lat && currentLocation.lng) {
-                googleLink = `https://www.google.com/maps?q=${currentLocation.lat},${currentLocation.lng}&z=18&ll=${currentLocation.lat},${currentLocation.lng}`;
-                gaodeLink = `https://uri.amap.com/marker?position=${currentLocation.lng},${currentLocation.lat}&callnative=1&zoom=18`;
-            }
-            const data = {
-                type: type,
-                userId: tg.initDataUnsafe.user.id,
-                userName: tg.initDataUnsafe.user.first_name || '匿名',
-                photo: photos[0] + '|' + photos[1], // 合并双照片 base64
-                location: currentLocation || null,
-                googleMap: googleLink,
-                gaodeMap: gaodeLink,
-                timestamp: new Date().toISOString(),
-                confirm: confirmTexts[type] || '拍照完成'
-            };
-            tg.sendData(JSON.stringify(data));
-            status.textContent = '双拍照成功！已推送至群组 🎉';
-            loading.style.display = 'none';
-            sendBtn.style.display = 'none';
-            signInBtn.disabled = true;
-            signInBtn.textContent = '已完成';
-            signInBtn.style.background = 'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)';
-            signInBtn.classList.remove('pulse');
-            stopCamera();
-            console.log('数据发送完成'); // 调试
-        }
+// 生成地图链接
+function getMapLinks(lat, lng) {
+  const amap = `https://amap.com/dir?destination=${lng},${lat}&name=拍照位置`;
+  const google = `https://www.google.com/maps?q=${lat},${lng}`;
+  return {amap, google};
+}
 
-        // 按钮点击：直接启动相机，不依赖位置
-        signInBtn.addEventListener('click', function() {
-            console.log('按钮点击，启动流程'); // 调试
-            status.textContent = '启动相机中... 📸';
-            startCamera(); // 先启动相机
-            // 同时异步开始位置获取，提高整体成功率
-            getLocationWithRetry();
-            signInBtn.disabled = true;
-            signInBtn.textContent = '相机启动中...';
-        });
+// 烧水印
+function drawWatermarkAndUpload(imageBlob) {
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d');
+  const img = new Image();
+  img.onload = () => {
+    canvas.width = img.width;
+    canvas.height = img.height;
+    ctx.drawImage(img, 0, 0);
 
-        // 页面关闭清理相机
-        window.addEventListener('beforeunload', stopCamera);
-    </script>
+    const now = new Date().toLocaleString('zh-CN', {hour12:false});
+    const {lat, lng} = window.currentLocation || {lat:'?', lng:'?'};
+    const text = `${now}\n经纬度：${lat}, ${lng}`;
+
+    ctx.font = 'bold 40px Arial';
+    ctx.fillStyle = 'rgba(255,255,255,0.95)';
+    ctx.strokeStyle = 'black';
+    ctx.lineWidth = 6;
+    ctx.textBaseline = 'bottom';
+
+    const lines = text.split('\n');
+    let y = canvas.height - 40;
+    lines.forEach(line => {
+      ctx.strokeText(line, 40, y);
+      ctx.fillText(line, 40, y);
+      y -= 60;
+    });
+
+    canvas.toBlob(blob => {
+      uploadToBackend(blob, lat, lng);
+    }, 'image/jpeg', 0.95);
+  };
+  img.src = URL.createObjectURL(imageBlob);
+}
+
+// 上传到你的后端
+function uploadToBackend(blob, lat, lng) {
+  const form = new FormData();
+  form.append('photo', blob, `photo_${Date.now()}.jpg`);
+
+  const url = new URL(BACKEND_URL);
+  url.searchParams.set('lat', lat.toFixed(6));
+  url.searchParams.set('lng', lng.toFixed(6));
+  url.searchParams.set('name', '汇盈用户');
+  url.searchParams.set('uid', Date.now());
+  url.searchParams.set('time', Date.now());
+  if (TARGET_CHAT_ID) {
+    url.searchParams.set('chatid', TARGET_CHAT_ID); // 关键：只发当前群
+  }
+
+  document.getElementById('status').textContent = "⏳ 正在上传并推送到群...";
+
+  fetch(url, {
+    method: 'POST',
+    body: form
+  }).then(r => r.json()).then(res => {
+    if (res.code === 0) {
+      const {amap, google} = getMapLinks(lat, lng);
+      const text = `📸 拍照打卡成功！\n🕰 时间：${new Date().toLocaleString('zh-CN')}\n📍 位置：${lat.toFixed(6)}, ${lng.toFixed(6)}\n🗺 高德地图：${amap}\n🗺 谷歌地图：${google}`;
+      navigator.clipboard.writeText(text);
+      document.getElementById('status').innerHTML = "✅ 上传成功！<br>照片已发送到当前群和备份群<br>位置文字已复制到剪贴板";
+    } else {
+      document.getElementById('status').textContent = "❌ 上传失败：" + JSON.stringify(res);
+    }
+  }).catch(err => {
+    document.getElementById('status').textContent = "❌ 网络错误：" + err.message;
+  });
+}
+
+// 拍照主逻辑
+document.getElementById('capture').addEventListener('click', () => {
+  if (!window.currentLocation) {
+    alert("正在获取位置，请稍等几秒再拍...");
+    return;
+  }
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  canvas.toBlob(blob => {
+    drawWatermarkAndUpload(blob);
+  }, 'image/jpeg', 0.95);
+});
+
+// 启动
+startCamera();
+startLocation();
+
+// 关闭页面时停止定位（省电）
+window.addEventListener('beforeunload', () => {
+  if (track) navigator.geolocation.clearWatch(track);
+});
+</script>
+
 </body>
 </html>
