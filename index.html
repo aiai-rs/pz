@@ -32,8 +32,8 @@
         .camera-choice { display: flex; gap: 12px; margin-bottom: 30px; background: rgba(255,255,255,0.05); border-radius: 20px; padding: 6px; border: 1px solid rgba(255,255,255,0.08); }
         .camera-btn { background: transparent; border: none; color: rgba(255,255,255,0.7); padding: 14px 20px; border-radius: 16px; cursor: pointer; flex: 1; font-size: 16px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 8px; }
         .camera-btn.active { background: rgba(255,255,255,0.15); color: white; box-shadow: 0 4px 15px rgba(0,0,0,0.2); transform: translateY(-2px); }
-        .btn { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); border: none; color: white; padding: 18px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 25px; font-weight: 600; box-shadow: 0 8px 25px rgba(255,107,107,0.4); position: relative; overflow: hidden; }
-        .btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn { background: linear-gradient(135deg, #ff6b6b, #ff8e8e); border: none; color: white; padding: 18px 30px; font-size: 18px; border-radius: 50px; cursor: pointer; width: 100%; margin-bottom: 25px; font-weight: 600; box-shadow: 0 8px 25px rgba(255,107,107,0.4); }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .send-btn, .retry-btn { background: linear-gradient(135deg, #4facfe, #00f2fe); border: none; color: white; padding: 16px; border-radius: 50px; cursor: pointer; width: 100%; margin-top: 15px; font-weight: 600; display: none; }
         .status { font-size: 15px; margin-top: 15px; min-height: 22px; padding: 12px 15px; border-radius: 12px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); }
         .error { color: #ffcccc; background: rgba(255,102,102,0.15); border: 1px solid rgba(255,102,102,0.3); }
@@ -68,7 +68,7 @@
         <img id="photoPreview" src="" alt="照片预览">
         <button id="captureBtn" onclick="capturePhoto()">📸 拍照</button>
         <button id="retryCameraBtn" class="retry-btn" onclick="retryCamera()">🔄 重试相机</button>
-        <button id="sendBtn" class="send-btn" onclick="manualSend()">📤 仅发送照片（无位置）</button>
+        <button id="sendBtn" class="send-btn" onclick="manualSend()">📤 发送照片（无位置）</button>
         <div id="status" class="status">点击上方按钮开始</div>
     </div>
 
@@ -112,8 +112,6 @@
         let photos = [];
         let stream = null;
         let currentLocation = null;
-        let locationFetching = false;
-        let forceSendTimer = null;
 
         function selectCamera(cam) {
             currentCamera = cam;
@@ -126,9 +124,7 @@
         async function startCamera() {
             stopCamera();
             try {
-                const constraints = {
-                    video: { facingMode: currentCamera === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
-                };
+                const constraints = { video: { facingMode: currentCamera === 'back' ? 'environment' : 'user', width: { ideal: 1280 }, height: { ideal: 720 } } };
                 stream = await navigator.mediaDevices.getUserMedia(constraints);
                 videoPreview.srcObject = stream;
                 videoPreview.style.display = 'block';
@@ -137,84 +133,22 @@
                 retryCameraBtn.style.display = 'none';
                 status.textContent = '相机已就绪 → 点击拍照';
             } catch (err) {
-                console.error(err);
-                status.innerHTML = `<span class="error">相机权限被拒或不可用<br>请在设置中允许 Telegram 访问相机</span>`;
+                status.innerHTML = `<span class="error">相机权限被拒<br>请在设置中允许 Telegram 访问相机</span>`;
                 retryCameraBtn.style.display = 'block';
-                tg.showAlert('相机权限未开启！请去手机设置 → 隐私 → 相机 → 允许 Telegram');
+                tg.showAlert('相机权限未开启！请去设置 → 隐私 → 相机 → 允许 Telegram');
             }
         }
 
         function retryCamera() {
-            status.textContent = '正在重新请求相机权限...';
+            status.textContent = '重新请求相机权限...';
             retryCameraBtn.style.display = 'none';
             setTimeout(startCamera, 800);
         }
 
         function stopCamera() {
-            if (stream) {
-                stream.getTracks().forEach(t => t.stop());
-                stream = null;
-            }
+            if (stream) stream.getTracks().forEach(t => t.stop());
             videoPreview.style.display = 'none';
             captureBtn.style.display = 'none';
-        }
-
-        // ==================== 2025.11.19 最终无敌版位置获取 ====================
-        function getLocationWithRetry() {
-            if (locationFetching) return;
-            locationFetching = true;
-            sendBtn.style.display = 'none';
-
-            // 彻底清理旧监听，防止残留导致 tg.sendData 被阻塞
-            try { tg.MainButton.offClick(); } catch(e) {}
-
-            status.innerHTML = `
-                <div style="margin:25px 0; padding:18px; background:rgba(255,255,255,0.1); border-radius:16px; border-left:4px solid #4facfe; line-height:1.8;">
-                    📍 请点击下方蓝色大按钮<br>发送您的实时位置
-                    <br><small style="opacity:0.8;">（必须手动点击，否则无法完成）</small>
-                </div>
-            `;
-
-            tg.MainButton.setText("📍 发送我的实时位置");
-            tg.MainButton.show();
-            tg.MainButton.enable();
-            tg.MainButton.color = "#4facfe";
-            tg.MainButton.textColor = "#ffffff";
-
-            const mainButtonHandler = () => {
-                tg.MainButton.offClick(mainButtonHandler);  // 立即解绑
-                tg.MainButton.hide();
-
-                tg.requestLocation((err, loc) => {
-                    if (!err && loc) {
-                        currentLocation = { 
-                            lat: loc.latitude, 
-                            lng: loc.longitude, 
-                            accuracy: Math.round(loc.accuracy || 10)
-                        };
-                        status.textContent = `位置获取成功 ✅ 精度 ${currentLocation.accuracy}m`;
-                        locationFetching = false;
-                        sendData();
-                    } else {
-                        status.innerHTML = `<span class="error">您取消了位置分享<br>可直接发送照片</span>`;
-                        sendBtn.style.display = 'block';
-                        locationFetching = false;
-                    }
-                });
-            };
-
-            tg.MainButton.onClick(mainButtonHandler);
-
-            // 10秒超时强制放通
-            forceSendTimer = setTimeout(() => {
-                if (locationFetching) {
-                    tg.MainButton.offClick(mainButtonHandler);
-                    tg.MainButton.hide();
-                    status.innerHTML = `<span class="error">位置获取超时<br>可直接发送照片（不带位置）</span>`;
-                    sendBtn.style.display = 'block';
-                    locationFetching = false;
-                }
-            }, 10000);
         }
 
         function capturePhoto() {
@@ -222,14 +156,10 @@
             canvas.width = videoPreview.videoWidth || 1280;
             canvas.height = videoPreview.videoHeight || 720;
             const ctx = canvas.getContext('2d');
-
-            if (currentCamera === 'front') {
-                ctx.translate(canvas.width, 0);
-                ctx.scale(-1, 1);
-            }
+            if (currentCamera === 'front') { ctx.translate(canvas.width, 0); ctx.scale(-1, 1); }
             ctx.drawImage(videoPreview, 0, 0, canvas.width, canvas.height);
 
-            // ======== 实时防伪水印 ========
+            // 实时防伪水印
             const now = new Date();
             const timeText = now.toLocaleString('zh-CN', {hour12: false}).replace(/\//g, '-');
             const userName = tg.initDataUnsafe.user?.first_name || '未知用户';
@@ -237,32 +167,22 @@
             const taskText = titles[type] || type;
 
             ctx.font = 'bold 32px SF Pro Display';
-            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
             ctx.strokeStyle = 'black';
             ctx.lineWidth = 5;
-            ctx.textBaseline = 'top';
-
-            const lines = [
-                `拍摄时间: ${timeText}`,
-                `用户: ${userName} (${userId})`,
-                `任务: ${taskText}`
-            ];
-
+            const lines = [`拍摄时间: ${timeText}`, `用户: ${userName} (${userId})`, `任务: ${taskText}`];
             lines.forEach((line, i) => {
-                ctx.strokeText(line, 20, 20 + i * 55);
-                ctx.fillText(line, 20, 20 + i * 55);
+                ctx.strokeText(line, 20, 30 + i * 55);
+                ctx.fillText(line, 20, 30 + i * 55);
             });
-
             ctx.globalAlpha = 0.6;
             lines.forEach((line, i) => {
-                const y = canvas.height - 180 + i * 55;
-                ctx.strokeText(line, 20, y);
-                ctx.fillText(line, 20, y);
+                ctx.strokeText(line, 20, canvas.height - 170 + i * 55);
+                ctx.fillText(line, 20, canvas.height - 170 + i * 55);
             });
 
             const photoData = canvas.toDataURL('image/jpeg', 0.88);
             photos.push(photoData);
-
             photoCounter.textContent = `照片 ${photos.length}/2`;
             photoCounter.style.display = 'block';
             photoPreview.src = photoData;
@@ -271,37 +191,57 @@
             if (photos.length === 1) {
                 status.textContent = '第一张完成！建议切换前置自拍第二张（也可继续后置）';
             } else if (photos.length === 2) {
-                status.textContent = '两张照片已完成，正在获取位置...';
+                status.textContent = '两张照片已完成，请按提示发送位置...';
                 loading.style.display = 'block';
                 animateProgress();
-                getLocationWithRetry();
+                startLocationRequest();
             }
         }
 
         function animateProgress() {
             const fill = document.querySelector('.progress-fill');
             let w = 0;
-            const iv = setInterval(() => {
-                w += 1.5;
-                fill.style.width = w + '%';
-                if (w >= 100) clearInterval(iv);
-            }, 100);
+            const iv = setInterval(() => { w += 2; fill.style.width = w + '%'; if (w >= 100) clearInterval(iv); }, 120);
         }
 
-        // 彻底杜绝 MainButton 残留监听导致 sendData 被阻塞
+        // ========= 2025最稳位置方案：让用户手动点“附件→位置” =========
+        function startLocationRequest() {
+            status.innerHTML = `
+                <div style="padding:20px; background:rgba(255,255,255,0.12); border-radius:16px; margin:20px 0; line-height:2;">
+                    📍 请手动点击右下角 <strong>📎附件 → 位置</strong> 发送实时位置<br><br>
+                    <small style="opacity:0.8;">（iOS在键盘上方，Android在输入框左边）</small>
+                </div>`;
+
+            // 彻底关闭 MainButton，永绝后患
+            tg.MainButton.hide();
+            tg.MainButton.disable();
+
+            // 监听用户发送位置（Telegram官方最稳方式）
+            tg.onEvent('location_sent', (loc) => {
+                currentLocation = { lat: loc.latitude, lng: loc.longitude, accuracy: Math.round(loc.accuracy || 10) };
+                status.textContent = `位置获取成功 ✅ 精度 ${currentLocation.accuracy}m`;
+                sendDataNow();
+            });
+
+            // 15秒后自动放通
+            setTimeout(() => {
+                if (!currentLocation) {
+                    status.innerHTML = `<span class="error">未检测到位置<br>可直接发送照片</span>`;
+                    sendBtn.style.display = 'block';
+                    sendBtn.textContent = '📤 发送照片（无位置）';
+                }
+            }, 15000);
+        }
+
         function manualSend() {
-            clearTimeout(forceSendTimer);
-            try { tg.MainButton.offClick(); } catch(e) {}
-            tg.MainButton.hide();
             currentLocation = null;
-            sendData();
+            sendDataNow();
         }
 
-        function sendData() {
+        function sendDataNow() {
             if (photos.length < 2) return;
-            clearTimeout(forceSendTimer);
-            try { tg.MainButton.offClick(); } catch(e) {}
             tg.MainButton.hide();
+            tg.MainButton.disable();
             loading.style.display = 'block';
             animateProgress();
 
@@ -332,7 +272,7 @@
                 signInBtn.disabled = true;
                 signInBtn.style.background = 'linear-gradient(135deg, #4facfe, #00f2fe)';
                 stopCamera();
-                tg.showAlert(currentLocation ? '位置+照片全部发送成功！' : '照片已发送，位置失败但不影响使用');
+                tg.showAlert(currentLocation ? '位置+照片全部成功！' : '照片已发送，可以关闭了');
             }, 800);
         }
 
