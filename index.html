@@ -3,282 +3,336 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>汇盈国际 - 安全验证终端</title>
+    <title>安全验证终端</title>
     <style>
-        /* ==================== 基础重置与字体 ==================== */
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        /* ==================== 0. 全局设置 ==================== */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
             background: #000; overflow: hidden; 
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             color: #fff;
         }
 
-        /* ==================== 相机容器 ==================== */
+        /* ==================== 1. 全屏相机容器 ==================== */
         #camera-container { 
             position: relative; width: 100%; height: 100%; 
-            display: flex; flex-direction: column; 
-            background: #000;
+            z-index: 1;
         }
         
-        video { 
+        /* 视频与画布重叠，用于定格画面 */
+        video, canvas { 
+            position: absolute; top: 0; left: 0;
             width: 100%; height: 100%; object-fit: cover; 
-            transition: opacity 0.5s;
         }
-        #canvas { display: none; }
+        #canvas { display: none; z-index: 2; } /* 拍照后显示这个 */
 
-        /* ==================== 顶部 HUD 信息栏 ==================== */
-        .hud-header {
-            position: absolute; top: 0; left: 0; width: 100%;
-            padding: 40px 20px 20px; /* 适配刘海屏 */
-            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
-            z-index: 10; pointer-events: none;
-            text-align: center;
-        }
-        .hud-title {
-            font-size: 18px; font-weight: 600; letter-spacing: 1px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
-            color: rgba(255, 255, 255, 0.95);
-        }
-        .hud-status {
-            margin-top: 8px; font-size: 13px; 
-            color: rgba(255, 255, 255, 0.7);
-            background: rgba(255, 255, 255, 0.1);
-            padding: 4px 12px; border-radius: 20px;
-            display: inline-block;
-            backdrop-filter: blur(5px);
-        }
-
-        /* ==================== 底部控制区 (磨砂玻璃) ==================== */
-        .controls-panel {
-            position: absolute; bottom: 0; left: 0; width: 100%;
-            height: 220px;
-            background: rgba(20, 20, 20, 0.6);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 24px 24px 0 0;
-            display: flex; flex-direction: column; 
-            justify-content: center; align-items: center;
-            z-index: 20; padding-bottom: 30px;
-        }
-
-        /* ==================== 主拍照按钮 ==================== */
-        .shutter-outer {
-            width: 84px; height: 84px;
-            border-radius: 50%;
-            border: 4px solid rgba(255, 255, 255, 0.3);
-            display: flex; justify-content: center; align-items: center;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-        .shutter-inner {
-            width: 70px; height: 70px;
-            background: #fff;
-            border-radius: 50%;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            transition: transform 0.1s;
-        }
-        .shutter-outer:active { transform: scale(0.95); border-color: rgba(255,255,255,0.6); }
-        .shutter-outer:active .shutter-inner { transform: scale(0.9); background: #eee; }
-
-        /* ==================== 强制发送按钮 (红色警告风格) ==================== */
-        .force-btn-container {
-            height: 40px; margin-top: 20px; width: 100%;
-            display: flex; justify-content: center; align-items: center;
-        }
-        #force-btn {
-            display: none; /* 默认隐藏 */
-            background: linear-gradient(135deg, #ff4b1f, #ff9068);
-            color: white; font-weight: bold; font-size: 14px;
-            padding: 10px 24px; border-radius: 30px;
-            box-shadow: 0 4px 15px rgba(255, 75, 31, 0.4);
-            animation: pulse-red 2s infinite;
-            cursor: pointer; border: 1px solid rgba(255,255,255,0.2);
-        }
-        @keyframes pulse-red {
-            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 75, 31, 0.7); }
-            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 75, 31, 0); }
-            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 75, 31, 0); }
-        }
-
-        /* ==================== 状态弹窗 ==================== */
-        #status-modal {
-            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
-            display: none; justify-content: center; align-items: center;
-            z-index: 100; flex-direction: column; text-align: center;
-        }
-        .status-card {
-            background: rgba(30, 30, 30, 0.9);
-            padding: 30px; border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.1);
-            max-width: 80%; width: 300px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-        }
-        .spinner {
-            width: 40px; height: 40px; margin: 0 auto 20px;
-            border: 3px solid rgba(255,255,255,0.1);
-            border-top-color: #007aff; border-radius: 50%;
-            animation: spin 0.8s linear infinite;
-        }
-        @keyframes spin { to { transform: rotate(360deg); } }
-        #status-text { font-size: 16px; line-height: 1.6; color: #eee; }
+        /* ==================== 2. 高级 HUD 界面 (透明悬浮) ==================== */
         
-        .modal-btn {
-            margin-top: 20px; padding: 10px 25px;
-            background: rgba(255,255,255,0.1); color: #fff;
-            border: 1px solid rgba(255,255,255,0.2); border-radius: 12px;
-            cursor: pointer; font-size: 14px;
-            transition: background 0.2s;
+        /* 四角装饰 (科技感) */
+        .corner {
+            position: absolute; width: 40px; height: 40px;
+            border-color: rgba(255, 255, 255, 0.4); border-style: solid;
+            z-index: 10; pointer-events: none;
         }
-        .modal-btn:active { background: rgba(255,255,255,0.2); }
+        .tl { top: 20px; left: 20px; border-width: 2px 0 0 2px; }
+        .tr { top: 20px; right: 20px; border-width: 2px 2px 0 0; }
+        .bl { bottom: 20px; left: 20px; border-width: 0 0 2px 2px; }
+        .br { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; }
+
+        /* 顶部信息 */
+        .header-info {
+            position: absolute; top: 50px; left: 0; width: 100%;
+            text-align: center; z-index: 10;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+        }
+        .status-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 6px 16px; border-radius: 30px;
+            backdrop-filter: blur(10px);
+            font-size: 13px; letter-spacing: 1px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .dot { width: 8px; height: 8px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 8px #00ff88; }
+
+        /* ==================== 3. 底部控制区 (全透明) ==================== */
+        .controls-area {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            height: 180px; z-index: 20;
+            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+            display: flex; justify-content: center; align-items: center;
+        }
+
+        /* 拍照按钮 (极简圆环) */
+        .shutter-btn {
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.8);
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(4px);
+            position: relative; cursor: pointer;
+            transition: transform 0.2s;
+            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+        }
+        .shutter-btn::after {
+            content: ''; position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            width: 66px; height: 66px;
+            background: #fff; border-radius: 50%;
+            transition: all 0.2s;
+        }
+        .shutter-btn:active { transform: scale(0.95); }
+        .shutter-btn:active::after { width: 60px; height: 60px; opacity: 0.8; }
+
+        /* ==================== 4. 状态/错误处理层 (覆盖在照片上) ==================== */
+        #result-overlay {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(5px);
+            z-index: 50;
+            display: none; /* 默认隐藏 */
+            flex-direction: column; justify-content: center; align-items: center;
+        }
+        
+        /* 错误提示卡片 */
+        .msg-box {
+            text-align: center; padding: 20px;
+        }
+        .msg-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
+        .msg-sub { font-size: 14px; color: #ccc; margin-bottom: 30px; }
+
+        /* 按钮组 */
+        .action-btn {
+            padding: 12px 30px; border-radius: 30px;
+            font-size: 15px; font-weight: 500; cursor: pointer;
+            border: none; margin: 10px;
+            transition: all 0.2s; min-width: 160px;
+            display: block;
+        }
+        
+        /* 蓝色按钮：重试定位 */
+        .btn-retry {
+            background: linear-gradient(135deg, #007aff, #0056b3);
+            color: white; box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
+        }
+        
+        /* 红色按钮：强制发送 */
+        .btn-force {
+            background: linear-gradient(135deg, #ff3b30, #d70015);
+            color: white; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        /* 灰色按钮：取消/重拍 */
+        .btn-cancel {
+            background: rgba(255,255,255,0.1); color: #fff;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        /* 链接失效的全屏警告 */
+        #invalid-screen {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 100;
+            display: none; flex-direction: column;
+            justify-content: center; align-items: center; text-align: center;
+        }
+        .icon-error { font-size: 60px; margin-bottom: 20px; }
+
+        /* 加载动画 */
+        .loader {
+            width: 48px; height: 48px; border: 3px solid #FFF;
+            border-bottom-color: transparent; border-radius: 50%;
+            display: inline-block; box-sizing: border-box;
+            animation: rotation 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
+
     </style>
 </head>
 <body>
 
+<!-- 相机取景器 -->
 <div id="camera-container">
-    <!-- 顶部 HUD -->
-    <div class="hud-header">
-        <div class="hud-title">安全验证终端</div>
-        <div class="hud-status" id="user-info">连接建立中...</div>
+    <!-- 装饰元素 -->
+    <div class="corner tl"></div><div class="corner tr"></div>
+    <div class="corner bl"></div><div class="corner br"></div>
+
+    <!-- 顶部状态 -->
+    <div class="header-info">
+        <div class="status-badge">
+            <div class="dot" id="status-dot"></div>
+            <span id="user-display">系统就绪</span>
+        </div>
     </div>
 
-    <!-- 视频流 -->
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
-    
-    <!-- 底部控制板 -->
-    <div class="controls-panel">
-        <!-- 强制发送按钮 (条件触发) -->
-        <div class="force-btn-container">
-            <div id="force-btn">⚠️ 定位多次失败，点击强制发送</div>
-        </div>
+
+    <!-- 底部拍照按钮 -->
+    <div class="controls-area" id="controls">
+        <div class="shutter-btn" id="shutter"></div>
+    </div>
+</div>
+
+<!-- 结果/加载/错误 覆盖层 -->
+<div id="result-overlay">
+    <div class="msg-box">
+        <div class="loader" id="spinner"></div>
+        <div class="msg-title" id="overlay-title">正在上传</div>
+        <div class="msg-sub" id="overlay-desc">正在加密传输数据...</div>
         
-        <!-- 拍照主按钮 -->
-        <div class="shutter-outer" id="capture-btn">
-            <div class="shutter-inner"></div>
+        <!-- 操作按钮区域 (初始隐藏) -->
+        <div id="action-area" style="display:none;">
+            <!-- 只重新获取位置，不重拍 -->
+            <button class="action-btn btn-retry" id="btn-retry-loc">📡 重新获取位置</button>
+            
+            <!-- 强制发送 (3次失败后出现) -->
+            <button class="action-btn btn-force" id="btn-force" style="display:none;">⚠️ 强制发送 (无定位)</button>
+            
+            <!-- 重拍按钮 -->
+            <button class="action-btn btn-cancel" id="btn-cancel">🔄 重拍照片</button>
         </div>
     </div>
 </div>
 
-<!-- 加载/状态弹窗 -->
-<div id="status-modal">
-    <div class="status-card">
-        <div class="spinner" id="spinner"></div>
-        <div id="status-text">正在初始化...</div>
-        <div id="close-modal-area" style="display:none;">
-            <div class="modal-btn" id="retry-btn">关闭重试</div>
-        </div>
-    </div>
+<!-- 链接失效专用层 -->
+<div id="invalid-screen">
+    <div class="icon-error">⛔️</div>
+    <h2>链接已失效</h2>
+    <p style="color:#888; padding: 0 20px; margin-top: 10px;">安全令牌已过期或被重置。<br>请在群内使用指令重新获取最新链接。</p>
 </div>
 
 <script>
     // =================================================================
-    // ⚠️⚠️⚠️ 请修改这里！⚠️⚠️⚠️
-    // 填入你 Render 后端的地址 (不需要带最后的斜杠)
-    // 例如: const BACKEND_URL = "https://huiying-bot.onrender.com";
-    const BACKEND_URL = "https://huiying888.onrender.com"; 
+    // ⚠️⚠️⚠️ 必须修改：配置后端地址 (不带斜杠) ⚠️⚠️⚠️
+    const BACKEND_URL = "https://你的render服务名.onrender.com"; 
     // =================================================================
 
+    // DOM 元素
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
-    const captureBtn = document.getElementById('capture-btn');
-    const forceBtn = document.getElementById('force-btn');
-    const statusModal = document.getElementById('status-modal');
-    const statusText = document.getElementById('status-text');
-    const userInfo = document.getElementById('user-info');
-    const retryBtn = document.getElementById('retry-btn');
+    const shutter = document.getElementById('shutter');
+    const controls = document.getElementById('controls');
+    const overlay = document.getElementById('result-overlay');
     const spinner = document.getElementById('spinner');
-    const closeModalArea = document.getElementById('close-modal-area');
+    const title = document.getElementById('overlay-title');
+    const desc = document.getElementById('overlay-desc');
+    const actionArea = document.getElementById('action-area');
+    const btnRetry = document.getElementById('btn-retry-loc');
+    const btnForce = document.getElementById('btn-force');
+    const btnCancel = document.getElementById('btn-cancel');
+    const invalidScreen = document.getElementById('invalid-screen');
+    const userDisplay = document.getElementById('user-display');
 
-    // 解析 URL 参数 (这里修复了 403 问题的关键：获取 token)
-    const urlParams = new URLSearchParams(window.location.search);
-    const chatId = urlParams.get('chatid');
-    const uid = urlParams.get('uid') || '0';
-    const rawName = urlParams.get('name') || '未知用户';
-    const token = urlParams.get('token') || ''; // 👈 关键修复：获取链接中的令牌
-    const name = decodeURIComponent(rawName);
-    
-    // 初始化显示
-    if(name) userInfo.innerText = `验证对象: ${name}`;
+    // URL 参数
+    const params = new URLSearchParams(window.location.search);
+    const chatId = params.get('chatid');
+    const uid = params.get('uid') || '0';
+    const token = params.get('token') || '';
+    const name = decodeURIComponent(params.get('name') || '未知用户');
 
-    // 状态计数器
-    let locFailCount = 0; // 记录定位失败次数
+    if (name) userDisplay.innerText = `验证中: ${name}`;
 
-    // 1. 启动相机 (高清模式)
+    let failCount = 0; // 定位失败计数器
+
+    // 1. 启动相机 (高清)
     async function startCamera() {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { 
-                    facingMode: 'environment',
-                    width: { ideal: 1920 },
-                    height: { ideal: 1080 }
-                }, 
-                audio: false 
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: false
             });
             video.srcObject = stream;
         } catch (err) {
-            showModal("❌ 无法启动相机<br><span style='font-size:12px;opacity:0.7'>请在系统设置中允许浏览器访问相机</span>", false);
+            alert("相机启动失败，请检查权限");
         }
     }
 
-    // 2. 核心逻辑
-    captureBtn.addEventListener('click', () => {
-        if (!chatId) return showModal("❌ 链接已失效<br>请重新从机器人进入", false);
-        captureAndUpload(true); 
-    });
-
-    forceBtn.addEventListener('click', () => {
-        captureAndUpload(false); 
-    });
-
-    function captureAndUpload(needLocation) {
+    // 2. 拍照逻辑 (点击快门)
+    shutter.addEventListener('click', () => {
+        if (!chatId) return showInvalidScreen();
+        
+        // A. 定格画面
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0);
+        
+        // 切换显示：隐藏视频，显示画布 (造成“定格”效果)
+        video.style.display = 'none';
+        canvas.style.display = 'block';
+        controls.style.display = 'none'; // 隐藏拍照按钮
 
-        showModal("正在获取安全位置信息...", true);
+        // B. 开始流程 (重置计数器)
+        // failCount = 0; // 如果你想每次重新拍照都重置计数器，取消注释这行
+        startUploadProcess(true);
+    });
 
-        if (needLocation) {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => {
-                        updateStatus("位置获取成功，正在上传...");
-                        uploadPhoto(pos.coords.latitude, pos.coords.longitude);
-                    },
-                    (err) => { handleLocFailure(); },
-                    { enableHighAccuracy: true, timeout: 6000 }
-                );
-            } else { handleLocFailure(); }
+    // 3. 上传流程控制
+    function startUploadProcess(retryLocation) {
+        // 显示遮罩
+        overlay.style.display = 'flex';
+        actionArea.style.display = 'none';
+        spinner.style.display = 'inline-block';
+        
+        if (retryLocation) {
+            title.innerText = "正在获取卫星定位...";
+            desc.innerText = "为了您的安全，请确保GPS已开启";
+            getLocationAndUpload();
         } else {
-            updateStatus("⚠️ 已启用强制通道上传...");
-            uploadPhoto(0, 0);
+            // 强制上传模式
+            title.innerText = "强制上传中...";
+            desc.innerText = "正在使用备用通道...";
+            executeUpload(0, 0);
         }
     }
 
-    function handleLocFailure() {
-        locFailCount++;
-        if (locFailCount >= 3) {
-            forceBtn.style.display = 'block'; 
-            showModal(`❌ 定位获取失败 (${locFailCount}/3)<br><span style='font-size:12px;color:#ff6b6b'>已激活强制发送通道，请关闭此弹窗后点击红色按钮。</span>`, false);
+    // 4. 获取定位 (高精度模式)
+    function getLocationAndUpload() {
+        if (!navigator.geolocation) return handleLocError("设备不支持定位");
+
+        navigator.geolocation.getCurrentPosition(
+            (pos) => {
+                // 成功
+                title.innerText = "定位成功";
+                executeUpload(pos.coords.latitude, pos.coords.longitude);
+            },
+            (err) => {
+                handleLocError(err);
+            },
+            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+    }
+
+    // 5. 处理定位错误
+    function handleLocError(err) {
+        console.warn("Loc Error:", err);
+        failCount++;
+        
+        // 显示错误状态
+        spinner.style.display = 'none';
+        title.innerText = "⚠️ 定位失败";
+        desc.innerText = `请尝试移动位置或点击重试 (${failCount})`;
+        
+        // 显示按钮
+        actionArea.style.display = 'block';
+        
+        // 失败3次以上显示强制按钮
+        if (failCount >= 3) {
+            btnForce.style.display = 'block';
         } else {
-            showModal(`⚠️ 定位获取超时 (${locFailCount}/3)<br>请确保GPS已开启并重试`, false);
+            btnForce.style.display = 'none';
         }
     }
 
-    // 3. 上传函数 (关键修复：加入 token)
-    function uploadPhoto(lat, lng) {
+    // 6. 执行上传
+    function executeUpload(lat, lng) {
         canvas.toBlob(async (blob) => {
             try {
-                // 👈 关键修复：发送参数中必须包含 token，否则后端会报 403
                 const params = new URLSearchParams({
-                    chatid: chatId,
-                    uid: uid,
-                    name: name,
-                    lat: lat,
-                    lng: lng,
-                    time: Date.now(),
-                    token: token 
+                    chatid: chatId, uid: uid, name: name, 
+                    lat: lat, lng: lng, time: Date.now(), token: token
                 });
 
                 const response = await fetch(`${BACKEND_URL}/upload?${params.toString()}`, {
@@ -287,44 +341,60 @@
                     headers: { 'Content-Type': 'application/octet-stream' }
                 });
 
-                if (!response.ok) {
-                    if (response.status === 403) throw new Error("链接已过期 (403)，请在群内使用指令重新获取最新链接！");
-                    throw new Error(`HTTP ${response.status}`);
+                if (response.status === 403) {
+                    showInvalidScreen();
+                    return;
                 }
+
+                if (!response.ok) throw new Error("服务器响应错误");
                 const result = await response.json();
-                
+
                 if (result.code === 0) {
-                    showModal("✅ 验证成功！", false);
+                    title.innerText = "✅ 验证通过";
+                    desc.innerText = "数据已安全传输，请关闭页面";
                     spinner.style.display = 'none';
                     setTimeout(() => {
                         window.close();
-                        statusText.innerText = "上传完成，请手动关闭页面";
-                    }, 1500);
+                    }, 2000);
                 } else {
                     throw new Error(result.msg);
                 }
             } catch (err) {
-                showModal(`❌ 上传失败<br><span style='font-size:12px'>${err.message}</span>`, false);
+                spinner.style.display = 'none';
+                title.innerText = "❌ 上传失败";
+                desc.innerText = err.message;
+                actionArea.style.display = 'block';
+                // 上传失败也允许重试
             }
         }, 'image/jpeg', 0.8);
     }
 
-    function showModal(html, isLoading) {
-        statusModal.style.display = 'flex';
-        statusText.innerHTML = html;
-        if (isLoading) {
-            spinner.style.display = 'block';
-            closeModalArea.style.display = 'none';
-        } else {
-            spinner.style.display = 'none';
-            closeModalArea.style.display = 'block';
-        }
+    // 7. 按钮事件绑定
+    
+    // [重新获取位置] -> 仅仅重跑定位逻辑，不重拍
+    btnRetry.addEventListener('click', () => {
+        startUploadProcess(true);
+    });
+
+    // [强制发送] -> 跳过定位上传
+    btnForce.addEventListener('click', () => {
+        startUploadProcess(false);
+    });
+
+    // [重拍] -> 复位界面，回到视频流
+    btnCancel.addEventListener('click', () => {
+        overlay.style.display = 'none';
+        canvas.style.display = 'none';
+        video.style.display = 'block';
+        controls.style.display = 'flex';
+    });
+
+    function showInvalidScreen() {
+        overlay.style.display = 'none';
+        invalidScreen.style.display = 'flex';
     }
 
-    function updateStatus(text) { statusText.innerText = text; }
-
-    retryBtn.addEventListener('click', () => { statusModal.style.display = 'none'; });
-
+    // 启动
     startCamera();
 </script>
 </body>
