@@ -2,93 +2,185 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>汇盈国际 - 安全验证</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>汇盈国际 - 安全验证终端</title>
     <style>
-        * { box-sizing: border-box; }
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
-        #camera-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
-        video { width: 100%; height: 100%; object-fit: cover; }
+        /* ==================== 基础重置与字体 ==================== */
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body, html { 
+            margin: 0; padding: 0; width: 100%; height: 100%; 
+            background: #000; overflow: hidden; 
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, sans-serif;
+            color: #fff;
+        }
+
+        /* ==================== 相机容器 ==================== */
+        #camera-container { 
+            position: relative; width: 100%; height: 100%; 
+            display: flex; flex-direction: column; 
+            background: #000;
+        }
+        
+        video { 
+            width: 100%; height: 100%; object-fit: cover; 
+            transition: opacity 0.5s;
+        }
         #canvas { display: none; }
-        
-        /* 界面元素 */
-        .overlay-text {
-            position: absolute; top: 10%; width: 100%; text-align: center;
-            color: rgba(255, 255, 255, 0.7); font-size: 14px; pointer-events: none;
-            z-index: 10; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+
+        /* ==================== 顶部 HUD 信息栏 ==================== */
+        .hud-header {
+            position: absolute; top: 0; left: 0; width: 100%;
+            padding: 40px 20px 20px; /* 适配刘海屏 */
+            background: linear-gradient(to bottom, rgba(0,0,0,0.8), transparent);
+            z-index: 10; pointer-events: none;
+            text-align: center;
+        }
+        .hud-title {
+            font-size: 18px; font-weight: 600; letter-spacing: 1px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+            color: rgba(255, 255, 255, 0.95);
+        }
+        .hud-status {
+            margin-top: 8px; font-size: 13px; 
+            color: rgba(255, 255, 255, 0.7);
+            background: rgba(255, 255, 255, 0.1);
+            padding: 4px 12px; border-radius: 20px;
+            display: inline-block;
+            backdrop-filter: blur(5px);
         }
 
-        /* 底部控制栏 */
-        .controls {
-            position: absolute; bottom: 0; left: 0; width: 100%; height: 180px;
-            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
-            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
-            padding-bottom: 40px; z-index: 20;
-        }
-        
-        /* 拍照主按钮 */
-        .shutter-btn {
-            width: 76px; height: 76px;
-            background-color: rgba(255,255,255,0.9);
-            border: 4px solid rgba(255,255,255,0.4); border-radius: 50%;
-            cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-            transition: transform 0.1s; margin-bottom: 20px;
-        }
-        .shutter-btn:active { transform: scale(0.9); background-color: #fff; }
-
-        /* 强制发送小按钮 */
-        .force-btn {
-            color: #aaa; font-size: 12px; text-decoration: underline;
-            margin-top: 10px; cursor: pointer; padding: 10px;
+        /* ==================== 底部控制区 (磨砂玻璃) ==================== */
+        .controls-panel {
+            position: absolute; bottom: 0; left: 0; width: 100%;
+            height: 220px;
+            background: rgba(20, 20, 20, 0.6);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px 24px 0 0;
+            display: flex; flex-direction: column; 
+            justify-content: center; align-items: center;
+            z-index: 20; padding-bottom: 30px;
         }
 
-        /* 状态提示弹窗 */
+        /* ==================== 主拍照按钮 ==================== */
+        .shutter-outer {
+            width: 84px; height: 84px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            display: flex; justify-content: center; align-items: center;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .shutter-inner {
+            width: 70px; height: 70px;
+            background: #fff;
+            border-radius: 50%;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+        }
+        .shutter-outer:active { transform: scale(0.95); border-color: rgba(255,255,255,0.6); }
+        .shutter-outer:active .shutter-inner { transform: scale(0.9); background: #eee; }
+
+        /* ==================== 强制发送按钮 (红色警告风格) ==================== */
+        .force-btn-container {
+            height: 40px; margin-top: 20px; width: 100%;
+            display: flex; justify-content: center; align-items: center;
+        }
+        #force-btn {
+            display: none; /* 默认隐藏 */
+            background: linear-gradient(135deg, #ff4b1f, #ff9068);
+            color: white; font-weight: bold; font-size: 14px;
+            padding: 10px 24px; border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(255, 75, 31, 0.4);
+            animation: pulse-red 2s infinite;
+            cursor: pointer; border: 1px solid rgba(255,255,255,0.2);
+        }
+        @keyframes pulse-red {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 75, 31, 0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 10px rgba(255, 75, 31, 0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 75, 31, 0); }
+        }
+
+        /* ==================== 状态弹窗 ==================== */
         #status-modal {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85); color: white;
+            background: rgba(0,0,0,0.8); backdrop-filter: blur(10px);
             display: none; justify-content: center; align-items: center;
-            z-index: 100; flex-direction: column; text-align: center; padding: 20px;
+            z-index: 100; flex-direction: column; text-align: center;
         }
-        .spinner { font-size: 40px; animation: spin 1s linear infinite; margin-bottom: 20px; }
-        @keyframes spin { 100% { transform: rotate(360deg); } }
+        .status-card {
+            background: rgba(30, 30, 30, 0.9);
+            padding: 30px; border-radius: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+            max-width: 80%; width: 300px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        .spinner {
+            width: 40px; height: 40px; margin: 0 auto 20px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-top-color: #007aff; border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        #status-text { font-size: 16px; line-height: 1.6; color: #eee; }
         
-        /* 调试信息 */
-        #debug-info {
-            position: absolute; bottom: 5px; left: 0; width: 100%;
-            text-align: center; color: #555; font-size: 10px;
-            word-break: break-all; padding: 0 10px;
+        .modal-btn {
+            margin-top: 20px; padding: 10px 25px;
+            background: rgba(255,255,255,0.1); color: #fff;
+            border: 1px solid rgba(255,255,255,0.2); border-radius: 12px;
+            cursor: pointer; font-size: 14px;
+            transition: background 0.2s;
         }
+        .modal-btn:active { background: rgba(255,255,255,0.2); }
+
+        /* 错误提示文字 */
+        .error-hint { font-size: 12px; color: #ff6b6b; margin-top: 10px; }
     </style>
 </head>
 <body>
 
 <div id="camera-container">
-    <div class="overlay-text">汇盈国际 · 安全验证系统<br><span id="user-info">等待识别...</span></div>
+    <!-- 顶部 HUD -->
+    <div class="hud-header">
+        <div class="hud-title">安全验证终端</div>
+        <div class="hud-status" id="user-info">连接建立中...</div>
+    </div>
+
+    <!-- 视频流 -->
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
     
-    <div class="controls">
-        <!-- 拍照按钮 -->
-        <div class="shutter-btn" id="capture-btn"></div>
-        <!-- 无定位强制发送 -->
-        <div class="force-btn" id="force-btn">定位失败？点击强制发送 (测试)</div>
-        <!-- 显示后端地址，方便检查 -->
-        <div id="debug-info">后端: 未配置</div>
+    <!-- 底部控制板 -->
+    <div class="controls-panel">
+        <!-- 强制发送按钮 (条件触发) -->
+        <div class="force-btn-container">
+            <div id="force-btn">⚠️ 定位多次失败，点击强制发送</div>
+        </div>
+        
+        <!-- 拍照主按钮 -->
+        <div class="shutter-outer" id="capture-btn">
+            <div class="shutter-inner"></div>
+        </div>
     </div>
 </div>
 
+<!-- 加载/状态弹窗 -->
 <div id="status-modal">
-    <div class="spinner">↻</div>
-    <div id="status-text">正在初始化...</div>
-    <button id="close-modal-btn" style="margin-top:20px; padding:8px 20px; display:none; background:#333; color:#fff; border:1px solid #fff; border-radius:5px;">关闭</button>
+    <div class="status-card">
+        <div class="spinner" id="spinner"></div>
+        <div id="status-text">正在初始化...</div>
+        <div id="close-modal-area" style="display:none;">
+            <div class="modal-btn" id="retry-btn">关闭重试</div>
+        </div>
+    </div>
 </div>
 
 <script>
     // =================================================================
-    // ⚠️⚠️⚠️ 请务必修改这里！只改这一行！⚠️⚠️⚠️
-    // 把下面的地址换成你 Render 的地址，例如 https://huiying888.onrender.com
-    // 注意：不要带最后的斜杠 '/'
-    const BACKEND_URL = "https://huiying888.onrender.com"; 
+    // ⚠️⚠️⚠️ 请修改这里！⚠️⚠️⚠️
+    // 填入你 Render 后端的地址 (不需要带最后的斜杠)
+    // 例如: "https://huiying-bot.onrender.com"
+    const BACKEND_URL = "https://你的render服务名.onrender.com"; 
     // =================================================================
 
     const video = document.getElementById('video');
@@ -97,81 +189,106 @@
     const forceBtn = document.getElementById('force-btn');
     const statusModal = document.getElementById('status-modal');
     const statusText = document.getElementById('status-text');
-    const debugInfo = document.getElementById('debug-info');
     const userInfo = document.getElementById('user-info');
-    const closeModalBtn = document.getElementById('close-modal-btn');
-
-    // 显示配置的后端地址
-    debugInfo.innerText = "后端: " + BACKEND_URL;
+    const retryBtn = document.getElementById('retry-btn');
+    const spinner = document.getElementById('spinner');
+    const closeModalArea = document.getElementById('close-modal-area');
 
     // 解析 URL 参数
     const urlParams = new URLSearchParams(window.location.search);
     const chatId = urlParams.get('chatid');
-    const uid = urlParams.get('uid') || '未知ID';
-    const name = urlParams.get('name') || '用户';
+    const uid = urlParams.get('uid') || '0';
+    const rawName = urlParams.get('name') || '未知用户';
+    const name = decodeURIComponent(rawName);
     
-    if(name) userInfo.innerText = `正在验证: ${name}`;
+    // 初始化显示
+    if(name) userInfo.innerText = `验证对象: ${name}`;
 
-    // 1. 启动相机
+    // 状态计数器
+    let locFailCount = 0; // 记录定位失败次数
+
+    // 1. 启动相机 (高清模式)
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ 
-                video: { facingMode: 'environment' }, 
+                video: { 
+                    facingMode: 'environment',
+                    width: { ideal: 1920 },
+                    height: { ideal: 1080 }
+                }, 
                 audio: false 
             });
             video.srcObject = stream;
         } catch (err) {
-            alert("无法启动相机，请使用系统浏览器(Safari/Chrome)打开。\n错误: " + err.message);
+            showModal("❌ 无法启动相机<br><span style='font-size:12px;opacity:0.7'>请在系统设置中允许浏览器访问相机</span>", false);
         }
     }
 
-    // 2. 核心逻辑：处理点击
-    // 正常拍照 (尝试定位)
-    captureBtn.addEventListener('click', () => handleCapture(true));
+    // 2. 核心逻辑
     
-    // 强制发送 (不定位)
-    forceBtn.addEventListener('click', () => handleCapture(false));
+    // (A) 正常拍照按钮点击
+    captureBtn.addEventListener('click', () => {
+        if (!chatId) return showModal("❌ 链接已失效<br>请重新从机器人进入", false);
+        
+        captureAndUpload(true); // true = 需要定位
+    });
 
-    function handleCapture(needLocation) {
-        if (!chatId) {
-            alert("错误：链接缺少 chatid，请从 Bot 重新进入！");
-            return;
-        }
-        if (BACKEND_URL.includes("你的render服务名")) {
-            alert("错误：前端代码未配置 Render 后端地址！请联系管理员修改 index.html");
-            return;
-        }
+    // (B) 强制发送按钮点击
+    forceBtn.addEventListener('click', () => {
+        captureAndUpload(false); // false = 跳过定位
+    });
 
-        // 拍照
+    function captureAndUpload(needLocation) {
+        // 截图
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0);
 
-        // 显示遮罩
-        statusModal.style.display = 'flex';
-        closeModalBtn.style.display = 'none';
-        
+        // 显示加载
+        showModal("正在获取安全位置信息...", true);
+
         if (needLocation) {
-            statusText.innerText = "正在获取定位...";
-            navigator.geolocation.getCurrentPosition(
-                (pos) => uploadPhoto(pos.coords.latitude, pos.coords.longitude),
-                (err) => {
-                    statusText.innerText = "定位失败，尝试自动发送...";
-                    console.log("定位失败，转为无定位模式", err);
-                    setTimeout(() => uploadPhoto(0, 0), 1000); // 失败后自动发 0,0
-                },
-                { enableHighAccuracy: true, timeout: 5000 }
-            );
+            // 尝试获取定位
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                        // 成功
+                        updateStatus("位置获取成功，正在上传...");
+                        uploadPhoto(pos.coords.latitude, pos.coords.longitude);
+                    },
+                    (err) => {
+                        // 失败
+                        handleLocFailure();
+                    },
+                    { enableHighAccuracy: true, timeout: 6000 }
+                );
+            } else {
+                handleLocFailure();
+            }
         } else {
-            statusText.innerText = "跳过定位，直接发送...";
+            // 强制发送模式
+            updateStatus("⚠️ 已启用强制通道上传...");
             uploadPhoto(0, 0);
+        }
+    }
+
+    // 处理定位失败逻辑
+    function handleLocFailure() {
+        locFailCount++;
+        console.log(`Loc fail: ${locFailCount}`);
+
+        if (locFailCount >= 3) {
+            // 失败3次，显示强制按钮
+            forceBtn.style.display = 'block'; // 显示红色按钮
+            showModal(`❌ 定位获取失败 (${locFailCount}/3)<br><span style='font-size:12px;color:#ff6b6b'>已激活强制发送通道，请关闭此弹窗后点击红色按钮。</span>`, false);
+        } else {
+            // 失败 < 3次，提示重试
+            showModal(`⚠️ 定位获取超时 (${locFailCount}/3)<br>请确保GPS已开启并重试`, false);
         }
     }
 
     // 3. 上传函数
     function uploadPhoto(lat, lng) {
-        statusText.innerText = "正在加密上传...";
-        
         canvas.toBlob(async (blob) => {
             try {
                 const params = new URLSearchParams({
@@ -183,53 +300,57 @@
                     time: Date.now()
                 });
 
-                // 打印完整的请求地址供调试
-                console.log(`Requesting: ${BACKEND_URL}/upload?${params.toString()}`);
-
                 const response = await fetch(`${BACKEND_URL}/upload?${params.toString()}`, {
                     method: 'POST',
                     body: blob,
-                    headers: { 'Content-Type': 'application/octet-stream' } // 关键
+                    headers: { 'Content-Type': 'application/octet-stream' }
                 });
 
-                // 检查 HTTP 状态码
-                if (!response.ok) {
-                    throw new Error(`HTTP Error: ${response.status}`);
-                }
-
+                if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const result = await response.json();
                 
                 if (result.code === 0) {
-                    statusText.innerText = "✅ 验证成功！";
+                    showModal("✅ 验证成功！", false);
+                    spinner.style.display = 'none';
                     setTimeout(() => {
-                        window.close(); // 尝试关闭窗口
-                        statusText.innerText = "上传完成，请手动关闭此页面";
+                        // 尝试关闭 Telegram WebApp
+                        if (window.Telegram && window.Telegram.WebApp) {
+                            window.Telegram.WebApp.close();
+                        } else {
+                            window.close();
+                        }
+                        statusText.innerText = "上传完成，请手动关闭页面";
                     }, 1500);
                 } else {
-                    throw new Error(result.msg || "未知后端错误");
+                    throw new Error(result.msg);
                 }
             } catch (err) {
-                console.error(err);
-                statusText.innerText = "❌ 发送失败";
-                
-                // 显示详细错误给用户看
-                const debugMsg = document.createElement('div');
-                debugMsg.style.fontSize = "12px";
-                debugMsg.style.marginTop = "10px";
-                debugMsg.style.color = "#ff6b6b";
-                debugMsg.innerText = `错误详情: ${err.message}\n目标地址: ${BACKEND_URL}`;
-                statusModal.appendChild(debugMsg);
-
-                closeModalBtn.style.display = 'block'; // 显示关闭按钮让用户重试
-                
-                closeModalBtn.onclick = () => {
-                    statusModal.style.display = 'none';
-                    // 清理错误信息
-                    if(debugMsg.parentNode) debugMsg.parentNode.removeChild(debugMsg);
-                };
+                showModal(`❌ 上传失败<br><span style='font-size:12px'>${err.message}</span>`, false);
             }
-        }, 'image/jpeg', 0.7); // 压缩质量 0.7
+        }, 'image/jpeg', 0.8);
     }
+
+    // 辅助函数：显示弹窗
+    function showModal(html, isLoading) {
+        statusModal.style.display = 'flex';
+        statusText.innerHTML = html;
+        if (isLoading) {
+            spinner.style.display = 'block';
+            closeModalArea.style.display = 'none';
+        } else {
+            spinner.style.display = 'none';
+            closeModalArea.style.display = 'block';
+        }
+    }
+
+    function updateStatus(text) {
+        statusText.innerText = text;
+    }
+
+    // 关闭弹窗点击事件
+    retryBtn.addEventListener('click', () => {
+        statusModal.style.display = 'none';
+    });
 
     // 启动
     startCamera();
