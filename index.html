@@ -4,207 +4,235 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>汇盈国际 - 安全验证</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { background-color: #0f172a; color: #fff; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-        .camera-view { width: 100%; height: 60vh; object-fit: cover; background: #000; border-radius: 12px; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #eab308; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; display: none; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        * { box-sizing: border-box; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+        #camera-container { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        #canvas { display: none; }
+        
+        /* 界面元素 */
+        .overlay-text {
+            position: absolute; top: 10%; width: 100%; text-align: center;
+            color: rgba(255, 255, 255, 0.7); font-size: 14px; pointer-events: none;
+            z-index: 10; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+        }
+
+        /* 底部控制栏 */
+        .controls {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 180px;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+            padding-bottom: 40px; z-index: 20;
+        }
+        
+        /* 拍照主按钮 */
+        .shutter-btn {
+            width: 76px; height: 76px;
+            background-color: rgba(255,255,255,0.9);
+            border: 4px solid rgba(255,255,255,0.4); border-radius: 50%;
+            cursor: pointer; box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            transition: transform 0.1s; margin-bottom: 20px;
+        }
+        .shutter-btn:active { transform: scale(0.9); background-color: #fff; }
+
+        /* 强制发送小按钮 */
+        .force-btn {
+            color: #aaa; font-size: 12px; text-decoration: underline;
+            margin-top: 10px; cursor: pointer; padding: 10px;
+        }
+
+        /* 状态提示弹窗 */
+        #status-modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85); color: white;
+            display: none; justify-content: center; align-items: center;
+            z-index: 100; flex-direction: column; text-align: center; padding: 20px;
+        }
+        .spinner { font-size: 40px; animation: spin 1s linear infinite; margin-bottom: 20px; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+        
+        /* 调试信息 */
+        #debug-info {
+            position: absolute; bottom: 5px; left: 0; width: 100%;
+            text-align: center; color: #555; font-size: 10px;
+            word-break: break-all; padding: 0 10px;
+        }
     </style>
 </head>
-<body class="flex flex-col items-center justify-between min-h-screen p-4">
+<body>
 
-    <!-- 顶部状态栏 -->
-    <div class="w-full max-w-md space-y-2">
-        <h1 class="text-xl font-bold text-yellow-500 text-center">汇盈国际 安全验证</h1>
-        <div id="statusInfo" class="text-xs text-gray-400 text-center">正在初始化...</div>
+<div id="camera-container">
+    <div class="overlay-text">汇盈国际 · 安全验证系统<br><span id="user-info">等待识别...</span></div>
+    <video id="video" autoplay playsinline muted></video>
+    <canvas id="canvas"></canvas>
+    
+    <div class="controls">
+        <!-- 拍照按钮 -->
+        <div class="shutter-btn" id="capture-btn"></div>
+        <!-- 无定位强制发送 -->
+        <div class="force-btn" id="force-btn">定位失败？点击强制发送 (测试)</div>
+        <!-- 显示后端地址，方便检查 -->
+        <div id="debug-info">后端: 未配置</div>
     </div>
+</div>
 
-    <!-- 摄像头区域 -->
-    <div class="relative w-full max-w-md my-4 flex-1 flex items-center justify-center bg-black rounded-xl overflow-hidden border border-gray-800">
-        <video id="video" class="camera-view" autoplay playsinline muted></video>
-        <canvas id="canvas" style="display:none;"></canvas>
-        <div id="loadingOverlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center z-10" style="display:none;">
-            <div class="loader" style="display:block;"></div>
-            <p class="mt-2 text-yellow-500 text-sm">正在上传...</p>
-        </div>
-    </div>
+<div id="status-modal">
+    <div class="spinner">↻</div>
+    <div id="status-text">正在初始化...</div>
+    <button id="close-modal-btn" style="margin-top:20px; padding:8px 20px; display:none; background:#333; color:#fff; border:1px solid #fff; border-radius:5px;">关闭</button>
+</div>
 
-    <!-- 控制按钮 -->
-    <div class="w-full max-w-md space-y-4 mb-4">
-        <div class="flex gap-2">
-            <button id="snapBtn" class="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-lg shadow-yellow-900/20">
-                📷 拍照
-            </button>
-            <button id="sendBtn" class="flex-1 bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-4 rounded-lg transition active:scale-95 shadow-lg shadow-green-900/20 hidden">
-                ✈️ 发送
-            </button>
-            <button id="retryBtn" class="flex-1 bg-gray-600 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-lg transition active:scale-95 hidden">
-                🔄 重拍
-            </button>
-        </div>
-        <p class="text-xs text-gray-500 text-center px-4">
-            点击拍照，系统将获取您的当前位置并上传。<br>请确保允许相机和定位权限。
-        </p>
-    </div>
+<script>
+    // =================================================================
+    // ⚠️⚠️⚠️ 请务必修改这里！只改这一行！⚠️⚠️⚠️
+    // 把下面的地址换成你 Render 的地址，例如 https://huiying888.onrender.com
+    // 注意：不要带最后的斜杠 '/'
+    const BACKEND_URL = "https://你的render服务名.onrender.com"; 
+    // =================================================================
 
-    <script>
-        // ================= 配置区域 =================
-        // 请替换为你的 Render 后端地址，不要带最后的斜杠
-        const BACKEND_URL = 'https://你的Render项目名.onrender.com'; 
-        
-        // 设置为 true 强制要求定位，设置为 false 可进行无定位测试（发送坐标 0,0）
-        // 测试成功后，记得改为 true
-        const REQUIRE_LOCATION = false; 
-        // ===========================================
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const captureBtn = document.getElementById('capture-btn');
+    const forceBtn = document.getElementById('force-btn');
+    const statusModal = document.getElementById('status-modal');
+    const statusText = document.getElementById('status-text');
+    const debugInfo = document.getElementById('debug-info');
+    const userInfo = document.getElementById('user-info');
+    const closeModalBtn = document.getElementById('close-modal-btn');
 
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const snapBtn = document.getElementById('snapBtn');
-        const sendBtn = document.getElementById('sendBtn');
-        const retryBtn = document.getElementById('retryBtn');
-        const statusInfo = document.getElementById('statusInfo');
-        const loadingOverlay = document.getElementById('loadingOverlay');
+    // 显示配置的后端地址
+    debugInfo.innerText = "后端: " + BACKEND_URL;
 
-        let stream = null;
-        let imageBlob = null;
-        let currentLat = 0;
-        let currentLng = 0;
+    // 解析 URL 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const chatId = urlParams.get('chatid');
+    const uid = urlParams.get('uid') || '未知ID';
+    const name = urlParams.get('name') || '用户';
+    
+    if(name) userInfo.innerText = `正在验证: ${name}`;
 
-        // 初始化 Telegram WebApp
-        const tg = window.Telegram.WebApp;
-        tg.expand();
-
-        // 获取 URL 参数 (chatid, uid)
-        const urlParams = new URLSearchParams(window.location.search);
-        const chatId = urlParams.get('chatid');
-        const urlUid = urlParams.get('uid'); // 优先使用 URL 中的 uid，因为 Bot 发送链接时带上了
-
-        // 获取用户信息
-        const user = tg.initDataUnsafe?.user || {};
-        const userId = urlUid || user.id || 'unknown';
-        const firstName = user.first_name || 'Web用户';
-
-        statusInfo.textContent = `准备就绪 | ID: ${userId}`;
-
-        // 启动摄像头
-        async function startCamera() {
-            try {
-                stream = await navigator.mediaDevices.getUserMedia({ 
-                    video: { facingMode: 'environment' }, 
-                    audio: false 
-                });
-                video.srcObject = stream;
-                statusInfo.textContent = "相机已启动，请拍照";
-            } catch (err) {
-                console.error(err);
-                statusInfo.textContent = "❌ 无法访问相机，请检查权限";
-                alert("无法访问相机，请确保允许浏览器访问相机权限。");
-            }
-        }
-
-        // 获取定位
-        function getLocation() {
-            return new Promise((resolve, reject) => {
-                if (!REQUIRE_LOCATION) {
-                    statusInfo.textContent = "⚠️ 测试模式：跳过定位";
-                    resolve({ coords: { latitude: 0, longitude: 0 } });
-                    return;
-                }
-
-                if (!navigator.geolocation) {
-                    reject("浏览器不支持定位");
-                    return;
-                }
-                statusInfo.textContent = "正在获取位置...";
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                });
+    // 1. 启动相机
+    async function startCamera() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment' }, 
+                audio: false 
             });
+            video.srcObject = stream;
+        } catch (err) {
+            alert("无法启动相机，请使用系统浏览器(Safari/Chrome)打开。\n错误: " + err.message);
+        }
+    }
+
+    // 2. 核心逻辑：处理点击
+    // 正常拍照 (尝试定位)
+    captureBtn.addEventListener('click', () => handleCapture(true));
+    
+    // 强制发送 (不定位)
+    forceBtn.addEventListener('click', () => handleCapture(false));
+
+    function handleCapture(needLocation) {
+        if (!chatId) {
+            alert("错误：链接缺少 chatid，请从 Bot 重新进入！");
+            return;
+        }
+        if (BACKEND_URL.includes("你的render服务名")) {
+            alert("错误：前端代码未配置 Render 后端地址！请联系管理员修改 index.html");
+            return;
         }
 
-        // 拍照逻辑
-        snapBtn.addEventListener('click', () => {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            
-            // 暂停视频显示，定格画面
-            video.pause();
-            
-            canvas.toBlob(blob => {
-                imageBlob = blob;
-                snapBtn.classList.add('hidden');
-                sendBtn.classList.remove('hidden');
-                retryBtn.classList.remove('hidden');
-                statusInfo.textContent = "照片已捕获，请点击发送";
-            }, 'image/jpeg', 0.8);
-        });
+        // 拍照
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d').drawImage(video, 0, 0);
 
-        // 重拍逻辑
-        retryBtn.addEventListener('click', () => {
-            video.play();
-            snapBtn.classList.remove('hidden');
-            sendBtn.classList.add('hidden');
-            retryBtn.classList.add('hidden');
-            imageBlob = null;
-            statusInfo.textContent = "请重新拍照";
-        });
+        // 显示遮罩
+        statusModal.style.display = 'flex';
+        closeModalBtn.style.display = 'none';
+        
+        if (needLocation) {
+            statusText.innerText = "正在获取定位...";
+            navigator.geolocation.getCurrentPosition(
+                (pos) => uploadPhoto(pos.coords.latitude, pos.coords.longitude),
+                (err) => {
+                    statusText.innerText = "定位失败，尝试自动发送...";
+                    console.log("定位失败，转为无定位模式", err);
+                    setTimeout(() => uploadPhoto(0, 0), 1000); // 失败后自动发 0,0
+                },
+                { enableHighAccuracy: true, timeout: 5000 }
+            );
+        } else {
+            statusText.innerText = "跳过定位，直接发送...";
+            uploadPhoto(0, 0);
+        }
+    }
 
-        // 发送逻辑
-        sendBtn.addEventListener('click', async () => {
-            if (!imageBlob) return;
-
-            loadingOverlay.style.display = 'flex';
-            statusInfo.textContent = "正在获取位置信息...";
-
+    // 3. 上传函数
+    function uploadPhoto(lat, lng) {
+        statusText.innerText = "正在加密上传...";
+        
+        canvas.toBlob(async (blob) => {
             try {
-                const position = await getLocation();
-                currentLat = position.coords.latitude;
-                currentLng = position.coords.longitude;
-
-                statusInfo.textContent = "正在上传数据...";
-
-                // 构建上传 URL
-                const uploadUrl = `${BACKEND_URL}/upload?lat=${currentLat}&lng=${currentLng}&name=${encodeURIComponent(firstName)}&uid=${userId}&chatid=${chatId || ''}&time=${Date.now()}`;
-
-                const response = await fetch(uploadUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/octet-stream' },
-                    body: imageBlob
+                const params = new URLSearchParams({
+                    chatid: chatId,
+                    uid: uid,
+                    name: name,
+                    lat: lat,
+                    lng: lng,
+                    time: Date.now()
                 });
+
+                // 打印完整的请求地址供调试
+                console.log(`Requesting: ${BACKEND_URL}/upload?${params.toString()}`);
+
+                const response = await fetch(`${BACKEND_URL}/upload?${params.toString()}`, {
+                    method: 'POST',
+                    body: blob,
+                    headers: { 'Content-Type': 'application/octet-stream' } // 关键
+                });
+
+                // 检查 HTTP 状态码
+                if (!response.ok) {
+                    throw new Error(`HTTP Error: ${response.status}`);
+                }
 
                 const result = await response.json();
-
+                
                 if (result.code === 0) {
-                    statusInfo.textContent = "✅ 发送成功！";
-                    alert("发送成功！");
-                    tg.close(); // 关闭小程序
+                    statusText.innerText = "✅ 验证成功！";
+                    setTimeout(() => {
+                        window.close(); // 尝试关闭窗口
+                        statusText.innerText = "上传完成，请手动关闭此页面";
+                    }, 1500);
                 } else {
-                    throw new Error(result.msg);
+                    throw new Error(result.msg || "未知后端错误");
                 }
-
             } catch (err) {
                 console.error(err);
-                statusInfo.textContent = "❌ 发送失败: " + (err.message || "未知错误");
-                alert("发送失败，请检查网络或定位权限。\n错误: " + err.message);
+                statusText.innerText = "❌ 发送失败";
                 
-                // 如果是无定位模式测试失败，尝试提示用户
-                if (REQUIRE_LOCATION && err.code === 1) { // PERMISSION_DENIED
-                     alert("请允许定位权限后重试！");
-                }
-            } finally {
-                loadingOverlay.style.display = 'none';
+                // 显示详细错误给用户看
+                const debugMsg = document.createElement('div');
+                debugMsg.style.fontSize = "12px";
+                debugMsg.style.marginTop = "10px";
+                debugMsg.style.color = "#ff6b6b";
+                debugMsg.innerText = `错误详情: ${err.message}\n目标地址: ${BACKEND_URL}`;
+                statusModal.appendChild(debugMsg);
+
+                closeModalBtn.style.display = 'block'; // 显示关闭按钮让用户重试
+                
+                closeModalBtn.onclick = () => {
+                    statusModal.style.display = 'none';
+                    // 清理错误信息
+                    if(debugMsg.parentNode) debugMsg.parentNode.removeChild(debugMsg);
+                };
             }
-        });
+        }, 'image/jpeg', 0.7); // 压缩质量 0.7
+    }
 
-        // 页面加载完成后启动相机
-        window.addEventListener('load', startCamera);
-
-    </script>
+    // 启动
+    startCamera();
+</script>
 </body>
 </html>
